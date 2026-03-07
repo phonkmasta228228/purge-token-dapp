@@ -1,122 +1,36 @@
-# PURGE Token dApp
-
-> Dark cyberpunk interface for the PURGE SPL token on X1 Mainnet.
-
-## Token Details
-
-| Field | Value |
-|-------|-------|
-| Token Mint | `CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP` |
-| Program ID | `8g6XCgTdm5WnQmFRZYu4DMUCJyKU1JWxKmQ16KqweP2n` |
-| Mint Authority | `CQHziQSbKjuoVyEcqaDjxD2NNYcLD3fBX2vA6VD1FV4p` |
-| Decimals | 18 |
-| Network | X1 Mainnet |
-
-## Features
-
-- **Token Info Display** — live mint address, total supply, decimals, mint authority
-- **Mint Interface** — mint new PURGE tokens (mint authority wallet required)
-- **Wallet Support** — X1 Wallet (custom adapter), Backpack, Phantom, Solflare
-- **Dark/Cyberpunk Aesthetic** — CRT scanlines, glitch effects, red-on-black theme
-- **Client-Safe SSR** — proper Next.js 16 App Router + Turbopack compatibility
-- **Vercel Ready** — `vercel.json` included
-
-## Wallet Support
-
-### X1 Wallet (Custom Adapter)
-Located at `lib/adapters/X1WalletAdapter.ts`. Detects `window.x1` or `window.solana` with `isX1Wallet: true`.
-
-Install: [Chrome Web Store](https://chromewebstore.google.com/detail/x1-wallet/kcfmcpdmlchhbikbogddmgopmjbflnae)
-
-### Backpack
-Native adapter via `@solana/wallet-adapter-backpack`.
-
-### Phantom / Solflare
-Standard Solana wallet adapters.
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
 
-```bash
-# Install
-npm install
+First, run the development server:
 
-# Dev server
+```bash
 npm run dev
-
-# Build
-npm run build
-
-# Start production
-npm start
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## Environment Variables
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-```bash
-cp .env.example .env.local
-```
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-| Variable | Default |
-|----------|---------|
-| `NEXT_PUBLIC_X1_RPC_URL` | `https://rpc.mainnet.x1.xyz` |
-| `NEXT_PUBLIC_PROGRAM_ID` | `8g6XCgTdm5WnQmFRZYu4DMUCJyKU1JWxKmQ16KqweP2n` |
-| `NEXT_PUBLIC_TOKEN_MINT` | `CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP` |
-| `NEXT_PUBLIC_MINT_AUTHORITY` | `CQHziQSbKjuoVyEcqaDjxD2NNYcLD3fBX2vA6VD1FV4p` |
+## Learn More
 
-## Deploy to Vercel
+To learn more about Next.js, take a look at the following resources:
 
-```bash
-vercel deploy
-```
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 
-Or connect this repo to Vercel — it will auto-detect the Next.js framework via `vercel.json`.
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-Set env vars in the Vercel dashboard (optional — defaults are hardcoded).
+## Deploy on Vercel
 
-## Project Structure
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-```
-purge-token-dapp/
-├── app/
-│   ├── layout.tsx          # Root layout with wallet provider
-│   ├── page.tsx            # Main page
-│   └── globals.css         # Cyberpunk styles + wallet adapter overrides
-├── components/
-│   ├── ClientOnly.tsx      # SSR guard for wallet-dependent components
-│   ├── GlitchText.tsx      # CSS glitch animation component
-│   ├── Header.tsx          # Top nav with wallet button
-│   ├── MintInterface.tsx   # Mint form with authority detection
-│   ├── TokenInfoCard.tsx   # Live token data display
-│   ├── WalletButton.tsx    # Connect/disconnect with dropdown
-│   └── WalletProvider.tsx  # Client-side Solana provider setup
-├── hooks/
-│   ├── useMintToken.ts     # Mint transaction hook
-│   └── useTokenInfo.ts     # Token data fetching hook
-├── lib/
-│   ├── adapters/
-│   │   └── X1WalletAdapter.ts  # Custom X1 Wallet adapter
-│   └── constants.ts            # Program addresses + RPC config
-├── .env.example
-├── next.config.ts          # Turbopack + polyfill aliases
-├── tailwind.config.ts      # Cyberpunk color palette
-└── vercel.json             # Vercel deployment config
-```
-
-## Mint Authority
-
-The mint interface detects if the connected wallet matches the mint authority:
-- ✅ If it matches: shows authority badge + enables mint button
-- ❌ If it doesn't match: shows read-only status, mint button disabled
-
-Only the mint authority `CQHziQSbKjuoVyEcqaDjxD2NNYcLD3fBX2vA6VD1FV4p` can mint PURGE tokens.
-
-## Tech Stack
-
-- **Next.js 16** with App Router + Turbopack
-- **TypeScript** (ES2020 target)
-- **Tailwind CSS** with custom cyberpunk palette
-- **@solana/web3.js** v1
-- **@solana/wallet-adapter-react** + react-ui
-- **@solana/spl-token** for mint operations
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
