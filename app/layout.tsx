@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
-import { SolanaWalletProvider } from '@/components/WalletProvider';
-import { Header } from '@/components/Header';
+import { ClientWalletProvider } from '@/components/ClientWalletProvider';
+import { DynamicHeader } from '@/components/DynamicHeader';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -28,9 +28,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={inter.variable}>
       <body className="bg-slate-50 text-slate-900 antialiased">
-        <SolanaWalletProvider>
+        <ClientWalletProvider>
           <div className="min-h-screen flex flex-col">
-            <Header />
+            <DynamicHeader />
             <main className="flex-1">{children}</main>
             <footer className="border-t border-slate-200 py-6 text-center">
               <p className="text-slate-400 text-sm">
@@ -38,7 +38,7 @@ export default function RootLayout({
               </p>
             </footer>
           </div>
-        </SolanaWalletProvider>
+        </ClientWalletProvider>
       </body>
     </html>
   );

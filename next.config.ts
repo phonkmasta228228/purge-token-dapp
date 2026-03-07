@@ -17,7 +17,42 @@ const nextConfig: NextConfig = {
       path: 'path-browserify',
       buffer: 'buffer',
       url: 'url',
+      events: 'events',
     },
+  },
+  // Webpack config for build-time polyfills
+  webpack: (config) => {
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      crypto: require.resolve('crypto-browserify'),
+      stream: require.resolve('stream-browserify'),
+      zlib: require.resolve('browserify-zlib'),
+      http: require.resolve('stream-http'),
+      https: require.resolve('https-browserify'),
+      assert: require.resolve('assert'),
+      os: require.resolve('os-browserify/browser'),
+      path: require.resolve('path-browserify'),
+      buffer: require.resolve('buffer'),
+      url: require.resolve('url'),
+      events: require.resolve('events'),
+      process: require.resolve('process/browser'),
+      util: require.resolve('util'),
+      querystring: require.resolve('querystring-es3'),
+      fs: false,
+      net: false,
+      tls: false,
+      child_process: false,
+    };
+    
+    // Add buffer polyfill globally
+    config.plugins.push(
+      new config.constructor.ProvidePlugin({
+        Buffer: ['buffer', 'Buffer'],
+        process: 'process/browser',
+      })
+    );
+    
+    return config;
   },
 };
 
