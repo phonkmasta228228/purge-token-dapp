@@ -1,6 +1,15 @@
 'use client';
 
-import React, { FC, ReactNode, useEffect, useState } from 'react';
+import React, { FC, ReactNode, useMemo } from 'react';
+import {
+  ConnectionProvider,
+  WalletProvider,
+} from '@solana/wallet-adapter-react';
+import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
+import { BackpackWalletAdapter } from '@solana/wallet-adapter-backpack';
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
+import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
+import { X1WalletAdapter } from '@/lib/adapters/X1WalletAdapter';
 import { X1_RPC_URL } from '@/lib/constants';
 
 // Import wallet adapter CSS
@@ -11,58 +20,26 @@ interface Props {
 }
 
 /**
- * Deferred wallet provider — loads all Solana wallet adapter code on the client only.
- * This avoids SSR issues where EventEmitter / window APIs aren't available.
+ * Solana Wallet Provider for X1 blockchain
+ * Supports: X1 Wallet, Phantom, Solflare, Backpack
  */
 export const SolanaWalletProvider: FC<Props> = ({ children }) => {
-  const [Provider, setProvider] = useState<FC<Props> | null>(null);
+  // Memoize wallets to prevent re-creation on renders
+  const wallets = useMemo(
+    () => [
+      new X1WalletAdapter(),
+      new PhantomWalletAdapter(),
+      new SolflareWalletAdapter(),
+      new BackpackWalletAdapter(),
+    ],
+    []
+  );
 
-  useEffect(() => {
-    // Dynamically import everything on the client
-    Promise.all([
-      import('@solana/wallet-adapter-react'),
-      import('@solana/wallet-adapter-react-ui'),
-      import('@/lib/adapters/X1WalletAdapter'),
-      import('@solana/wallet-adapter-backpack'),
-      import('@solana/wallet-adapter-phantom'),
-      import('@solana/wallet-adapter-solflare'),
-    ]).then(
-      ([
-        { ConnectionProvider, WalletProvider },
-        { WalletModalProvider },
-        { X1WalletAdapter },
-        { BackpackWalletAdapter },
-        { PhantomWalletAdapter },
-        { SolflareWalletAdapter },
-      ]) => {
-        const wallets = [
-          new X1WalletAdapter(),
-          new BackpackWalletAdapter(),
-          new PhantomWalletAdapter(),
-          new SolflareWalletAdapter(),
-        ];
-
-        const Composed: FC<Props> = ({ children }) => (
-          <ConnectionProvider endpoint={X1_RPC_URL}>
-            <WalletProvider
-              wallets={wallets as Parameters<typeof WalletProvider>[0]['wallets']}
-              autoConnect={false}
-            >
-              <WalletModalProvider>{children}</WalletModalProvider>
-            </WalletProvider>
-          </ConnectionProvider>
-        );
-
-        Composed.displayName = 'SolanaWalletProviderInner';
-        setProvider(() => Composed);
-      }
-    );
-  }, []);
-
-  if (!Provider) {
-    // During SSR and initial hydration, render children without wallet context
-    return <>{children}</>;
-  }
-
-  return <Provider>{children}</Provider>;
+  return (
+    <ConnectionProvider endpoint={X1_RPC_URL}>
+      <WalletProvider wallets={wallets} autoConnect={false}>
+        <WalletModalProvider>{children}</WalletModalProvider>
+      </WalletProvider>
+    </ConnectionProvider>
+  );
 };
