@@ -5,42 +5,43 @@ import { useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey, Connection } from '@solana/web3.js';
 
 const PROGRAM_ID = new PublicKey('8g6XCgTdm5WnQmFRZYu4DMUCJyKU1JWxKmQ16KqweP2n');
+const PURGE_MINT = new PublicKey('CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP');
 const X1_RPC = 'https://rpc.mainnet.x1.xyz';
 const SECONDS_PER_DAY = 86400;
-const GENESIS_BONUS = 3000n;
-const MIN_AMP = 100n;
 
 interface GlobalState {
   totalMinters: bigint;
-  amp: bigint;
-  totalSupply: bigint;
+  totalXBurnt: bigint;
+  activeMints: bigint;
   genesisTs: bigint;
 }
 
-interface UserRank {
-  cRank: bigint;
-  term: bigint;
-  maturityTs: bigint;
-  active: boolean;
+interface UserMint {
+  termDays: bigint;
+  matureTs: bigint;
+  claimed: boolean;
+  rank: bigint;
+  rewardAmount: bigint;
 }
 
 function parseGlobalState(data: Buffer): GlobalState {
-  // 8 discriminator + u64 × 4 + u8 bump
+  // 8 disc + u64 total_minters + u64 total_x_burnt + u64 active_mints + i64 genesis_ts + u8 bump
   let offset = 8;
   const totalMinters = data.readBigUInt64LE(offset); offset += 8;
-  const amp = data.readBigUInt64LE(offset); offset += 8;
-  const totalSupply = data.readBigUInt64LE(offset); offset += 8;
-  const genesisTs = data.readBigUInt64LE(offset);
-  return { totalMinters, amp, totalSupply, genesisTs };
+  const totalXBurnt = data.readBigUInt64LE(offset); offset += 8;
+  const activeMints = data.readBigUInt64LE(offset); offset += 8;
+  const genesisTs = data.readBigInt64LE(offset);
+  return { totalMinters, totalXBurnt, activeMints, genesisTs: BigInt(genesisTs) };
 }
 
-function parseUserRank(data: Buffer): UserRank {
-  let offset = 8 + 32; // discriminator + owner pubkey
-  const cRank = data.readBigUInt64LE(offset); offset += 8;
-  const term = data.readBigUInt64LE(offset); offset += 8;
-  const maturityTs = data.readBigUInt64LE(offset); offset += 8;
-  const active = data[offset] === 1;
-  return { cRank, term, maturityTs, active };
+function parseUserMint(data: Buffer): UserMint {
+  let offset = 8 + 32; // disc + owner
+  const termDays = data.readBigUInt64LE(offset); offset += 8;
+  const matureTs = data.readBigInt64LE(offset); offset += 8;
+  const claimed = data[offset] === 1; offset += 1;
+  const rank = data.readBigUInt64LE(offset); offset += 8;
+  const rewardAmount = data.readBigUInt64LE(offset);
+  return { termDays, matureTs: BigInt(matureTs), claimed, rank, rewardAmount };
 }
 
 function formatLargeNum(n: bigint): string {
@@ -71,7 +72,7 @@ const StatCard: FC<StatCardProps> = ({ label, value, sub, accent, loading }) => 
 export const Dashboard: FC = () => {
   const { connected, publicKey } = useWallet();
   const [globalState, setGlobalState] = useState<GlobalState | null>(null);
-  const [userRank, setUserRank] = useState<UserRank | null>(null);
+  const [userMint, setUserMint] = useState<UserMint | null>(null);
   const [loadingGlobal, setLoadingGlobal] = useState(true);
   const [loadingUser, setLoadingUser] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -101,24 +102,24 @@ export const Dashboard: FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Load user rank when wallet connects
+  // Load user_mint when wallet connects
   useEffect(() => {
-    if (!publicKey) { setUserRank(null); return; }
+    if (!publicKey) { setUserMint(null); return; }
     const load = async () => {
       setLoadingUser(true);
       try {
         const conn = new Connection(X1_RPC, 'confirmed');
         const [pda] = PublicKey.findProgramAddressSync(
-          [Buffer.from('user_rank'), publicKey.toBuffer()], PROGRAM_ID
+          [Buffer.from('user_mint'), publicKey.toBuffer()], PROGRAM_ID
         );
         const info = await conn.getAccountInfo(pda);
-        if (info && info.data.length >= 8 + 32 + 24 + 1) {
-          setUserRank(parseUserRank(info.data as unknown as Buffer));
+        if (info && info.data.length >= 8 + 32 + 8 + 8 + 1 + 8 + 8) {
+          setUserMint(parseUserMint(info.data as unknown as Buffer));
         } else {
-          setUserRank(null);
+          setUserMint(null);
         }
       } catch {
-        setUserRank(null);
+        setUserMint(null);
       } finally {
         setLoadingUser(false);
       }
@@ -126,20 +127,9 @@ export const Dashboard: FC = () => {
     load();
   }, [publicKey]);
 
-  // Calculate live AMP from global state
-  const liveAmp = globalState
-    ? (() => {
-        const now = BigInt(Math.floor(Date.now() / 1000));
-        const daysSinceGenesis = (now - globalState.genesisTs) / BigInt(SECONDS_PER_DAY);
-        return GENESIS_BONUS > daysSinceGenesis
-          ? (GENESIS_BONUS - daysSinceGenesis < MIN_AMP ? MIN_AMP : GENESIS_BONUS - daysSinceGenesis)
-          : MIN_AMP;
-      })()
-    : null;
-
-  const termDays = userRank ? Number(userRank.term) / SECONDS_PER_DAY : null;
-  const maturityDate = userRank ? new Date(Number(userRank.maturityTs) * 1000) : null;
-  const isMature = userRank ? BigInt(Math.floor(Date.now() / 1000)) >= userRank.maturityTs : false;
+  const termDays = userMint ? Number(userMint.termDays) : null;
+  const maturityDate = userMint ? new Date(Number(userMint.matureTs) * 1000) : null;
+  const isMature = userMint ? BigInt(Math.floor(Date.now() / 1000)) >= userMint.matureTs : false;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 space-y-10">
@@ -162,15 +152,15 @@ export const Dashboard: FC = () => {
             loading={loadingGlobal}
           />
           <StatCard
-            label="Total Supply"
-            value={globalState ? formatLargeNum(globalState.totalSupply) : '—'}
-            sub="PURGE minted"
+            label="Active Mints"
+            value={globalState ? formatLargeNum(globalState.activeMints) : '—'}
+            sub="currently locked"
             loading={loadingGlobal}
           />
           <StatCard
-            label="Current AMP"
-            value={liveAmp ? liveAmp.toString() : '—'}
-            sub="decreases over time"
+            label="X Burnt"
+            value={globalState ? formatLargeNum(globalState.totalXBurnt) : '—'}
+            sub="total XEN burned"
             loading={loadingGlobal}
           />
           <StatCard
@@ -194,16 +184,16 @@ export const Dashboard: FC = () => {
           </div>
         ) : loadingUser ? (
           <div className="bg-[#111] border border-[#1a1a1a] rounded-lg p-6 text-center text-[#555] text-sm animate-pulse">
-            Loading your rank...
+            Loading your mint...
           </div>
-        ) : !userRank ? (
+        ) : !userMint ? (
           <div className="bg-[#111] border border-[#1a1a1a] rounded-lg p-6 text-center">
-            <div className="text-[#444] text-sm mb-1">No active rank</div>
+            <div className="text-[#444] text-sm mb-1">No active mint</div>
             <div className="text-xs text-[#333]">Go to the Mint tab to get started</div>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard label="cRank" value={`#${userRank.cRank.toString()}`} sub="your minter number" accent />
+            <StatCard label="Rank" value={`#${userMint.rank.toString()}`} sub="your minter number" accent />
             <StatCard label="Term" value={`${termDays}d`} sub="lock duration" />
             <StatCard
               label="Maturity"
@@ -212,8 +202,8 @@ export const Dashboard: FC = () => {
             />
             <StatCard
               label="Status"
-              value={!userRank.active ? 'Claimed' : isMature ? 'Mature' : 'Locked'}
-              sub={userRank.active ? (isMature ? 'go claim rewards' : 'waiting for maturity') : 'reward collected'}
+              value={userMint.claimed ? 'Claimed' : isMature ? 'Mature' : 'Locked'}
+              sub={!userMint.claimed ? (isMature ? 'go claim rewards' : 'waiting for maturity') : 'reward collected'}
             />
           </div>
         )}
@@ -225,11 +215,11 @@ export const Dashboard: FC = () => {
         <div className="bg-[#111] border border-[#1a1a1a] rounded-lg divide-y divide-[#0d0d0d]">
           {[
             { label: 'Program ID', value: '8g6XCgTdm5WnQmFRZYu4DMUCJyKU1JWxKmQ16KqweP2n' },
+            { label: 'PURGE Mint', value: 'CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP' },
             { label: 'Network', value: 'X1 Mainnet' },
             { label: 'Min Term', value: '1 day' },
             { label: 'Max Term', value: '500 days' },
-            { label: 'Genesis AMP', value: '3,000 (decreases 1/day)' },
-            { label: 'Floor AMP', value: '100' },
+            { label: 'Decimals', value: '18' },
             { label: 'Max Amplifier (UI)', value: `${(1 + Math.log(500) * 0.5).toFixed(2)}×` },
           ].map(({ label, value }) => (
             <div key={label} className="px-5 py-3 flex items-center justify-between">
