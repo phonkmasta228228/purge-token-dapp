@@ -1,16 +1,31 @@
 'use client';
 
-import { FC, useState, useCallback } from 'react';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { FC, useState, useCallback, useEffect } from 'react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+import {
+  PublicKey,
+  Transaction,
+  TransactionInstruction,
+  SystemProgram,
+} from '@solana/web3.js';
 
-// XEN-style amplifier: logarithmic growth, longer term = higher multiplier
+const PROGRAM_ID = new PublicKey('8g6XCgTdm5WnQmFRZYu4DMUCJyKU1JWxKmQ16KqweP2n');
+const X1_RPC = 'https://rpc.mainnet.x1.xyz';
+const SECONDS_PER_DAY = 86400;
+
+// Anchor discriminator for claim_rank: sha256("global:claim_rank")[0..8]
+function getDiscriminator(name: string): Buffer {
+  const crypto = require('crypto');
+  const hash = crypto.createHash('sha256').update(`global:${name}`).digest();
+  return hash.slice(0, 8);
+}
+
 function getAmplifier(days: number): number {
   if (days <= 1) return 1.0;
   return parseFloat((1 + Math.log(days) * 0.5).toFixed(2));
 }
 
-// Estimated PURGE tokens based on days + amplifier
 function estimatePurge(days: number): number {
   const base = days * 100;
   const amp = getAmplifier(days);
@@ -22,34 +37,125 @@ function shortenAddress(addr: string): string {
 }
 
 export const ClaimRank: FC = () => {
-  const { connected, publicKey } = useWallet();
+  const { connected, publicKey, sendTransaction } = useWallet();
+  const { connection } = useConnection();
   const [term, setTerm] = useState(30);
   const [loading, setLoading] = useState(false);
   const [txSig, setTxSig] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hasActiveRank, setHasActiveRank] = useState(false);
+  const [checkingRank, setCheckingRank] = useState(false);
 
   const amplifier = getAmplifier(term);
   const estimated = estimatePurge(term);
 
+  // Derive PDAs
+  const getUserRankPDA = useCallback((userPubkey: PublicKey) => {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from('user_rank'), userPubkey.toBuffer()],
+      PROGRAM_ID
+    );
+  }, []);
+
+  const getGlobalStatePDA = useCallback(() => {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from('global_state')],
+      PROGRAM_ID
+    );
+  }, []);
+
+  // Check if user already has active rank
+  useEffect(() => {
+    if (!publicKey) return;
+    const check = async () => {
+      setCheckingRank(true);
+      try {
+        const [userRankPDA] = getUserRankPDA(publicKey);
+        const conn = new (await import('@solana/web3.js')).Connection(X1_RPC, 'confirmed');
+        const accountInfo = await conn.getAccountInfo(userRankPDA);
+        if (accountInfo && accountInfo.data.length > 8) {
+          // Parse 'active' field: offset 8 (discriminator) + 32 (owner) + 8 (c_rank) + 8 (term) + 8 (maturity_ts) = 56
+          const active = accountInfo.data[8 + 32 + 8 + 8 + 8] === 1;
+          setHasActiveRank(active);
+        } else {
+          setHasActiveRank(false);
+        }
+      } catch {
+        setHasActiveRank(false);
+      } finally {
+        setCheckingRank(false);
+      }
+    };
+    check();
+  }, [publicKey, getUserRankPDA, txSig]);
+
   const handleClaim = useCallback(async () => {
-    if (!connected || !publicKey) return;
+    if (!connected || !publicKey || !sendTransaction) return;
     setLoading(true);
     setError(null);
     setTxSig(null);
 
     try {
-      // Stub: simulate a delay and return a mock tx signature
-      await new Promise((r) => setTimeout(r, 1500));
-      const mockSig = Array.from({ length: 64 }, () =>
-        '0123456789abcdef'[Math.floor(Math.random() * 16)]
-      ).join('');
-      setTxSig(mockSig);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Transaction failed');
+      const { Connection, Transaction, TransactionInstruction, PublicKey: PK } = await import('@solana/web3.js');
+      const conn = new Connection(X1_RPC, 'confirmed');
+
+      const [userRankPDA] = getUserRankPDA(publicKey);
+      const [globalStatePDA] = getGlobalStatePDA();
+
+      // Build claim_rank instruction
+      // Args: term (u64, little-endian) = days * SECONDS_PER_DAY
+      const termSeconds = BigInt(term * SECONDS_PER_DAY);
+      const termBuf = Buffer.alloc(8);
+      termBuf.writeBigUInt64LE(termSeconds);
+
+      // Anchor discriminator for "claim_rank"
+      const { createHash } = await import('crypto');
+      const discriminator = createHash('sha256')
+        .update('global:claim_rank')
+        .digest()
+        .slice(0, 8);
+
+      const data = Buffer.concat([discriminator, termBuf]);
+
+      const ix = new TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys: [
+          { pubkey: userRankPDA, isSigner: false, isWritable: true },
+          { pubkey: globalStatePDA, isSigner: false, isWritable: true },
+          { pubkey: publicKey, isSigner: true, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        data,
+      });
+
+      const { blockhash } = await conn.getLatestBlockhash('confirmed');
+      const tx = new Transaction();
+      tx.recentBlockhash = blockhash;
+      tx.feePayer = publicKey;
+      tx.add(ix);
+
+      const sig = await sendTransaction(tx, conn, {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+
+      // Wait for confirmation
+      await conn.confirmTransaction(sig, 'confirmed');
+      setTxSig(sig);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // Parse Anchor error codes if present
+      if (msg.includes('RankAlreadyExists') || msg.includes('0x1771')) {
+        setError('You already have an active rank. Claim your reward first.');
+      } else if (msg.includes('InvalidTerm') || msg.includes('0x1770')) {
+        setError('Invalid term length. Choose between 1 and 500 days.');
+      } else {
+        setError(msg);
+      }
     } finally {
       setLoading(false);
     }
-  }, [connected, publicKey]);
+  }, [connected, publicKey, sendTransaction, term, getUserRankPDA, getGlobalStatePDA]);
 
   return (
     <div className="max-w-xl mx-auto px-4 py-10">
@@ -67,6 +173,10 @@ export const ClaimRank: FC = () => {
           <span className="w-2 h-2 rounded-full bg-[#00FFAA] inline-block"></span>
           <span className="font-mono">{shortenAddress(publicKey.toBase58())}</span>
           <span className="ml-auto text-[#00FFAA]">Connected</span>
+          {checkingRank && <span className="text-[#555] ml-2">Checking rank...</span>}
+          {!checkingRank && hasActiveRank && (
+            <span className="text-yellow-400 ml-2">⚠ Active rank exists</span>
+          )}
         </div>
       )}
 
@@ -140,6 +250,10 @@ export const ClaimRank: FC = () => {
             <p className="text-[#555] text-sm">Connect your wallet to claim rank</p>
             <WalletMultiButton />
           </div>
+        ) : hasActiveRank ? (
+          <div className="w-full py-4 bg-[#1a1a00] border border-yellow-700 text-yellow-400 font-black text-sm tracking-widest rounded text-center uppercase">
+            ⚠ Active Rank — Claim Reward First
+          </div>
         ) : (
           <button
             onClick={handleClaim}
@@ -151,7 +265,7 @@ export const ClaimRank: FC = () => {
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="animate-spin inline-block w-4 h-4 border-2 border-black border-t-transparent rounded-full"></span>
-                Processing...
+                Sending Transaction...
               </span>
             ) : (
               `⚡ Claim Rank — ${term} Days`
@@ -161,10 +275,26 @@ export const ClaimRank: FC = () => {
 
         {/* Success */}
         {txSig && (
-          <div className="bg-[#001a0d] border border-[#00FFAA33] rounded p-4 text-xs space-y-1">
+          <div className="bg-[#001a0d] border border-[#00FFAA33] rounded p-4 text-xs space-y-2">
             <div className="text-[#00FFAA] font-bold">✓ Rank Claimed Successfully</div>
             <div className="text-[#555]">Transaction:</div>
-            <div className="font-mono text-[#444] break-all">{txSig}</div>
+            <a
+              href={`https://explorer.mainnet.x1.xyz/tx/${txSig}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-mono text-[#00FFAA] break-all hover:underline"
+            >
+              {txSig}
+            </a>
+            <div className="text-[#444] pt-1">
+              Come back on{' '}
+              <span className="text-white">
+                {new Date(Date.now() + term * 86400000).toLocaleDateString('en-US', {
+                  month: 'short', day: 'numeric', year: 'numeric'
+                })}
+              </span>{' '}
+              to claim your PURGE tokens.
+            </div>
           </div>
         )}
 
