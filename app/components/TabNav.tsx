@@ -10,7 +10,7 @@ interface Props {
 }
 
 const tabs: { id: Tab; label: string; icon: string }[] = [
-  { id: 'claim-rank', label: 'Claim Rank', icon: '⚡' },
+  { id: 'claim-rank', label: 'Mint', icon: '⚡' },
   { id: 'claim-rewards', label: 'Claim Rewards', icon: '🎯' },
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
 ];
