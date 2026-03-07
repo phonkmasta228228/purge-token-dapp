@@ -24,3 +24,12 @@ export const TOKEN_PROGRAM_ID = new PublicKey(
 export const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey(
   'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJe1brs'
 );
+
+// Seeds for PDA derivation
+export const GLOBAL_STATE_SEED = 'global_state';
+export const USER_MINT_SEED = 'user_mint';
+export const MINT_AUTHORITY_SEED = 'mint_authority';
+
+// XEN-style constants
+export const MIN_TERM_DAYS = 1;
+export const MAX_TERM_DAYS = 500;
