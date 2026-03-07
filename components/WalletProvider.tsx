@@ -7,9 +7,6 @@ import {
 } from '@solana/wallet-adapter-react';
 import { WalletModalProvider } from '@solana/wallet-adapter-react-ui';
 import { BackpackWalletAdapter } from '@solana/wallet-adapter-backpack';
-import { PhantomWalletAdapter } from '@solana/wallet-adapter-phantom';
-import { SolflareWalletAdapter } from '@solana/wallet-adapter-solflare';
-import { X1WalletAdapter } from '@/lib/adapters/X1WalletAdapter';
 import { X1_RPC_URL } from '@/lib/constants';
 
 // Import wallet adapter CSS
@@ -21,15 +18,14 @@ interface Props {
 
 /**
  * Solana Wallet Provider for X1 blockchain
- * Supports: X1 Wallet, Phantom, Solflare, Backpack
+ *
+ * X1 Wallet, Phantom, Solflare, and other Wallet Standard wallets are
+ * auto-detected — no explicit adapter needed for them.
+ * Backpack is added explicitly as it uses a legacy adapter.
  */
 export const SolanaWalletProvider: FC<Props> = ({ children }) => {
-  // Memoize wallets to prevent re-creation on renders
   const wallets = useMemo(
     () => [
-      new X1WalletAdapter(),
-      new PhantomWalletAdapter(),
-      new SolflareWalletAdapter(),
       new BackpackWalletAdapter(),
     ],
     []
