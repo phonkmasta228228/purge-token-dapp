@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { SolanaWalletProvider } from "./components/WalletProvider";
+import { ClientWalletProvider } from "./components/ClientWalletProvider";
 
 export const metadata: Metadata = {
   title: "PURGE — X1 Token Protocol",
@@ -16,9 +16,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <SolanaWalletProvider>
+        <ClientWalletProvider>
           {children}
-        </SolanaWalletProvider>
+        </ClientWalletProvider>
       </body>
     </html>
   );
