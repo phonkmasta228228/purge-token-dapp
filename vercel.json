@@ -6,6 +6,9 @@
   "outputDirectory": ".next",
   "regions": ["iad1"],
   "env": {
-    "NEXT_PUBLIC_X1_RPC_URL": "https://rpc.mainnet.x1.xyz"
+    "NEXT_PUBLIC_X1_RPC_URL": "https://rpc.mainnet.x1.xyz",
+    "NEXT_PUBLIC_PROGRAM_ID": "8g6XCgTdm5WnQmFRZYu4DMUCJyKU1JWxKmQ16KqweP2n",
+    "NEXT_PUBLIC_TOKEN_MINT": "CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP",
+    "NEXT_PUBLIC_MINT_AUTHORITY": "CQHziQSbKjuoVyEcqaDjxD2NNYcLD3fBX2vA6VD1FV4p"
   }
 }
