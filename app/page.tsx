@@ -1,98 +1,117 @@
+'use client';
+
 import { TokenInfoCard } from '@/components/TokenInfoCard';
 import { MintInterface } from '@/components/MintInterface';
+import { useWallet } from '@solana/wallet-adapter-react';
 
 export default function Home() {
+  const { connected } = useWallet();
+
   return (
-    <div className="relative min-h-screen bg-black bg-grid">
-      {/* Ambient glow effects */}
-      <div className="fixed top-0 left-1/4 w-96 h-96 bg-purge-red/5 rounded-full blur-3xl pointer-events-none" />
-      <div className="fixed bottom-1/4 right-1/4 w-64 h-64 bg-purge-red/3 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="max-w-5xl mx-auto px-4 py-12">
+    <div className="min-h-screen bg-slate-50">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Hero */}
-        <div className="text-center mb-16">
-          <div className="inline-block mb-4">
-            <span className="text-purge-red/40 font-mono text-xs tracking-[0.5em] uppercase">
-              X1 MAINNET PROTOCOL
-            </span>
-          </div>
-
-          <h1 className="text-5xl sm:text-7xl font-black font-mono text-purge-red mb-4 tracking-widest text-glow-red animate-flicker">
-            PURGE
+        <div className="text-center mb-10">
+          <h1 className="text-4xl sm:text-5xl font-bold text-slate-900 mb-3">
+            PURGE Token
           </h1>
-
-          <div className="flex items-center justify-center gap-3 mb-6">
-            <div className="h-px w-16 bg-gradient-to-r from-transparent to-purge-red/40" />
-            <span className="text-purge-red/60 font-mono text-sm tracking-widest">
-              TOKEN INTERFACE
-            </span>
-            <div className="h-px w-16 bg-gradient-to-l from-transparent to-purge-red/40" />
-          </div>
-
-          <p className="text-purge-red/40 font-mono text-sm max-w-xl mx-auto leading-relaxed">
-            PURGE token on X1 blockchain. 18-decimal precision SPL token with mint authority controls.
-            Connect your X1 Wallet or Backpack to interact.
+          <p className="text-slate-500 text-lg max-w-2xl mx-auto">
+            Mint and manage PURGE tokens on X1 blockchain. 
+            Connect your wallet to view your balance and mint new tokens.
           </p>
         </div>
 
-        {/* Main grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Stats Row */}
+        <div className="mb-8">
           <TokenInfoCard />
-          <MintInterface />
         </div>
 
-        {/* Program info strip */}
-        <div className="mt-8 border border-purge-red/10 bg-black/40 rounded-lg p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
-            <div>
-              <p className="text-purge-red/40 font-mono text-xs uppercase tracking-wider mb-1">
-                Network
-              </p>
-              <p className="text-purge-cyan font-mono text-sm">X1 Mainnet</p>
+        {/* Main Content */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <MintInterface />
+          
+          {/* Info Card */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <h2 className="text-lg font-semibold text-slate-900 mb-4">
+              About PURGE
+            </h2>
+            <div className="space-y-4 text-sm text-slate-600">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                  <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-900">SPL Token Standard</p>
+                  <p>Built on Solana Program Library with 18 decimal precision</p>
+                </div>
+              </div>
+              
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                  <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-900">Mint Authority Controlled</p>
+                  <p>Tokens can only be minted by authorized wallets</p>
+                </div>
+              </div>
+              
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
+                  <svg className="w-4 h-4 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9-9a9 9 0 00-9-9m9 9H3" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-900">X1 Mainnet</p>
+                  <p>Running on X1 blockchain with fast finality and low fees</p>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-purge-red/40 font-mono text-xs uppercase tracking-wider mb-1">
-                Token Standard
-              </p>
-              <p className="text-purge-cyan font-mono text-sm">SPL Token</p>
-            </div>
-            <div>
-              <p className="text-purge-red/40 font-mono text-xs uppercase tracking-wider mb-1">
-                Precision
-              </p>
-              <p className="text-purge-cyan font-mono text-sm">18 Decimals</p>
+
+            {/* Links */}
+            <div className="mt-6 pt-6 border-t border-slate-100">
+              <div className="flex flex-wrap gap-3">
+                <a
+                  href={`https://explorer.mainnet.x1.xyz/address/${process.env.NEXT_PUBLIC_TOKEN_MINT || 'CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP'}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                >
+                  Explorer
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+                <a
+                  href="https://app.xdex.xyz/swap"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                >
+                  xDEX Swap
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+                <a
+                  href="https://chromewebstore.google.com/detail/x1-wallet/kcfmcpdmlchhbikbogddmgopmjbflnae"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                >
+                  X1 Wallet
+                  <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              </div>
             </div>
           </div>
-        </div>
-
-        {/* Links */}
-        <div className="mt-6 flex flex-wrap justify-center gap-4 text-xs font-mono">
-          <a
-            href={`https://explorer.mainnet.x1.xyz/address/${process.env.NEXT_PUBLIC_TOKEN_MINT || 'CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP'}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-purge-red/40 hover:text-purge-red transition-colors underline decoration-dashed"
-          >
-            Explorer ↗
-          </a>
-          <span className="text-purge-red/20">·</span>
-          <a
-            href="https://app.xdex.xyz/swap"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-purge-red/40 hover:text-purge-red transition-colors underline decoration-dashed"
-          >
-            xDEX Swap ↗
-          </a>
-          <span className="text-purge-red/20">·</span>
-          <a
-            href="https://chromewebstore.google.com/detail/x1-wallet/kcfmcpdmlchhbikbogddmgopmjbflnae"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-purge-red/40 hover:text-purge-red transition-colors underline decoration-dashed"
-          >
-            X1 Wallet ↗
-          </a>
         </div>
       </div>
     </div>

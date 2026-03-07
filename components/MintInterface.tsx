@@ -10,18 +10,16 @@ import { ClientOnly } from './ClientOnly';
 function AuthorityBadge({ hasMintAuthority }: { hasMintAuthority: boolean }) {
   if (hasMintAuthority) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 bg-purge-green/10 border border-purge-green/40 rounded text-xs font-mono">
-        <span className="w-2 h-2 bg-purge-green rounded-full animate-pulse" />
-        <span className="text-purge-green">MINT AUTHORITY DETECTED</span>
+      <div className="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm">
+        <span className="w-2 h-2 bg-green-500 rounded-full" />
+        <span className="text-green-700 font-medium">Mint authority detected</span>
       </div>
     );
   }
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-purge-red/10 border border-purge-red/20 rounded text-xs font-mono">
-      <span className="w-2 h-2 bg-purge-red/50 rounded-full" />
-      <span className="text-purge-red/50">
-        NO MINT AUTHORITY — READ ONLY ACCESS
-      </span>
+    <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+      <span className="w-2 h-2 bg-amber-500 rounded-full" />
+      <span className="text-amber-700 font-medium">No mint authority — read only</span>
     </div>
   );
 }
@@ -33,9 +31,12 @@ function TransactionLink({ signature }: { signature: string }) {
       href={explorerUrl}
       target="_blank"
       rel="noopener noreferrer"
-      className="text-purge-cyan hover:text-purge-cyan/70 text-xs font-mono underline decoration-dashed transition-colors"
+      className="text-indigo-600 hover:text-indigo-700 text-sm font-medium inline-flex items-center gap-1"
     >
-      {signature.slice(0, 16)}...{signature.slice(-8)} ↗
+      {signature.slice(0, 12)}...{signature.slice(-8)}
+      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+      </svg>
     </a>
   );
 }
@@ -90,37 +91,42 @@ function MintInterfaceInner() {
     connected && hasMintAuthority && amount && !validationError && !minting;
 
   return (
-    <div className="border border-purge-red/30 bg-black/60 rounded-lg p-6 backdrop-blur">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
       {/* Header */}
       <div className="mb-6">
-        <h2 className="text-purge-red font-mono font-bold text-lg tracking-widest mb-1">
-          MINT INTERFACE
+        <h2 className="text-slate-900 font-bold text-lg mb-1">
+          Mint Tokens
         </h2>
-        <p className="text-purge-red/40 text-xs font-mono">
-          Mint new $PURGE tokens to your wallet
+        <p className="text-slate-500 text-sm">
+          Create new $PURGE tokens and add them to the supply
         </p>
       </div>
 
       {/* Wallet / Authority Status */}
       {!connected ? (
-        <div className="mb-6 p-4 border border-dashed border-purge-red/30 rounded text-center">
-          <p className="text-purge-red/50 font-mono text-sm mb-3">
-            Connect your wallet to interact
+        <div className="mb-6 p-6 border-2 border-dashed border-slate-200 rounded-xl text-center">
+          <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+            <svg className="w-6 h-6 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <p className="text-slate-500 text-sm mb-4">
+            Connect your wallet to mint tokens
           </p>
           <button
             onClick={() => setVisible(true)}
-            className="px-6 py-2 border border-purge-red text-purge-red hover:bg-purge-red hover:text-black font-mono text-sm rounded transition-all"
+            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-all"
           >
-            CONNECT WALLET
+            Connect Wallet
           </button>
         </div>
       ) : (
         <div className="mb-6 space-y-3">
           <AuthorityBadge hasMintAuthority={hasMintAuthority} />
           {!hasMintAuthority && (
-            <div className="text-xs font-mono text-purge-red/40 p-3 bg-black/60 border border-purge-red/10 rounded">
-              <span className="text-purge-red/60">Mint authority:</span>{' '}
-              <span className="text-purge-cyan/60 break-all">
+            <div className="text-xs text-slate-500 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+              <span className="font-medium">Mint authority:</span>{' '}
+              <span className="font-mono break-all">
                 {PURGE_MINT_AUTHORITY.toBase58()}
               </span>
             </div>
@@ -132,7 +138,7 @@ function MintInterfaceInner() {
       <div className="space-y-4">
         {/* Amount Input */}
         <div>
-          <label className="block text-purge-red/60 font-mono text-xs uppercase tracking-wider mb-2">
+          <label className="block text-slate-700 text-sm font-medium mb-2">
             Amount to Mint
           </label>
           <div className="relative">
@@ -140,39 +146,44 @@ function MintInterfaceInner() {
               type="number"
               value={amount}
               onChange={handleAmountChange}
-              placeholder="0.000000"
+              placeholder="0.00"
               min="0"
               step="any"
               disabled={!connected || !hasMintAuthority || minting}
-              className={`w-full bg-black/80 border rounded px-4 py-3 font-mono text-purge-red placeholder-purge-red/20 focus:outline-none transition-colors text-lg
+              className={`w-full bg-white border rounded-lg px-4 py-3 font-mono text-slate-900 placeholder-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 transition-all text-lg
                 ${validationError
-                  ? 'border-red-500/60 focus:border-red-500'
+                  ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20'
                   : connected && hasMintAuthority
-                    ? 'border-purge-red/40 focus:border-purge-red'
-                    : 'border-purge-red/20 opacity-50 cursor-not-allowed'
+                    ? 'border-slate-200 focus:border-indigo-500'
+                    : 'border-slate-200 bg-slate-50 text-slate-400 cursor-not-allowed'
                 }
               `}
             />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-purge-red/40 font-mono text-sm">
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-medium">
               PURGE
             </span>
           </div>
           {validationError && (
-            <p className="mt-1 text-red-400 text-xs font-mono">⚠ {validationError}</p>
+            <p className="mt-1.5 text-red-600 text-sm flex items-center gap-1">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {validationError}
+            </p>
           )}
         </div>
 
         {/* Preset amounts */}
         {connected && hasMintAuthority && (
           <div>
-            <p className="text-purge-red/40 font-mono text-xs mb-2 uppercase">Quick amounts</p>
+            <p className="text-slate-500 text-xs mb-2 font-medium">Quick amounts</p>
             <div className="flex gap-2 flex-wrap">
               {['100', '1000', '10000', '1000000'].map((preset) => (
                 <button
                   key={preset}
                   onClick={() => handlePreset(preset)}
                   disabled={minting}
-                  className="px-3 py-1 border border-purge-red/30 hover:border-purge-red text-purge-red/60 hover:text-purge-red font-mono text-xs rounded transition-all disabled:opacity-30"
+                  className="px-3 py-1.5 bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 text-sm font-medium rounded-lg transition-all disabled:opacity-50"
                 >
                   {Number(preset).toLocaleString()}
                 </button>
@@ -185,31 +196,39 @@ function MintInterfaceInner() {
         <button
           onClick={handleMint}
           disabled={!canMint}
-          className={`w-full py-3 font-mono text-sm tracking-widest rounded transition-all duration-200 
+          className={`w-full py-3 font-semibold rounded-lg transition-all duration-200 
             ${canMint
-              ? 'bg-purge-red text-black hover:bg-purge-red/80 active:scale-[0.99] shadow-[0_0_20px_rgba(220,38,38,0.3)]'
-              : 'bg-purge-red/10 text-purge-red/30 cursor-not-allowed border border-purge-red/20'
+              ? 'bg-indigo-600 text-white hover:bg-indigo-700 active:scale-[0.99] shadow-sm'
+              : 'bg-slate-100 text-slate-400 cursor-not-allowed'
             }
           `}
         >
           {minting ? (
             <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-              MINTING...
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Minting...
             </span>
+          ) : !connected ? (
+            'Connect Wallet to Mint'
+          ) : !hasMintAuthority ? (
+            'No Mint Authority'
+          ) : !amount ? (
+            'Enter Amount'
+          ) : validationError ? (
+            'Fix Amount'
           ) : (
-            'EXECUTE MINT'
+            'Mint Tokens'
           )}
         </button>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="mt-4 p-3 bg-red-900/20 border border-red-500/40 rounded">
-          <p className="text-red-400 font-mono text-xs">
-            ⚠ MINT FAILED
+        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-red-700 font-medium text-sm mb-1">
+            Mint failed
           </p>
-          <p className="text-red-300/70 font-mono text-xs mt-1 break-all">
+          <p className="text-red-600 text-xs break-all">
             {error}
           </p>
         </div>
@@ -217,24 +236,29 @@ function MintInterfaceInner() {
 
       {/* Success */}
       {success && (
-        <div className="mt-4 p-4 bg-purge-green/10 border border-purge-green/40 rounded">
-          <p className="text-purge-green font-mono text-sm font-bold mb-2">
-            ✓ MINT SUCCESSFUL
-          </p>
-          <p className="text-purge-green/70 font-mono text-xs mb-1">
+        <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <svg className="w-5 h-5 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <p className="text-green-700 font-semibold text-sm">
+              Mint successful
+            </p>
+          </div>
+          <p className="text-green-600 text-sm mb-2">
             Minted {Number(success.amount).toLocaleString()} PURGE
           </p>
-          <div className="flex items-center gap-1 text-xs font-mono text-purge-green/60 mt-2">
-            <span>TX:</span>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-slate-500">Transaction:</span>
             <TransactionLink signature={success.signature} />
           </div>
         </div>
       )}
 
       {/* Info note */}
-      <div className="mt-4 p-3 bg-black/40 border border-purge-red/10 rounded">
-        <p className="text-purge-red/30 font-mono text-xs leading-relaxed">
-          ℹ Minted tokens are sent to your connected wallet&apos;s associated token account.
+      <div className="mt-4 p-3 bg-slate-50 border border-slate-100 rounded-lg">
+        <p className="text-slate-500 text-xs leading-relaxed">
+          Minted tokens are sent to your connected wallet&apos;s associated token account. 
           Transaction requires network fees in XNT.
         </p>
       </div>
@@ -247,15 +271,15 @@ export function MintInterface() {
   return (
     <ClientOnly
       fallback={
-        <div className="border border-purge-red/30 bg-black/60 rounded-lg p-6 backdrop-blur">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
           <div className="mb-6">
-            <h2 className="text-purge-red font-mono font-bold text-lg tracking-widest mb-1">
-              MINT INTERFACE
+            <h2 className="text-slate-900 font-bold text-lg mb-1">
+              Mint Tokens
             </h2>
-            <p className="text-purge-red/40 text-xs font-mono">Loading wallet...</p>
+            <p className="text-slate-400 text-sm">Loading wallet...</p>
           </div>
           <div className="h-32 flex items-center justify-center">
-            <span className="inline-block w-6 h-6 border-2 border-purge-red/40 border-t-purge-red rounded-full animate-spin" />
+            <span className="inline-block w-6 h-6 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
           </div>
         </div>
       }

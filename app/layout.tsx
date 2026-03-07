@@ -1,24 +1,17 @@
 import type { Metadata } from 'next';
-import { Space_Mono, Share_Tech_Mono } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { SolanaWalletProvider } from '@/components/WalletProvider';
 import { Header } from '@/components/Header';
 
-const spaceMono = Space_Mono({
-  weight: ['400', '700'],
+const inter = Inter({
   subsets: ['latin'],
-  variable: '--font-space-mono',
-});
-
-const shareTechMono = Share_Tech_Mono({
-  weight: '400',
-  subsets: ['latin'],
-  variable: '--font-share-tech',
+  variable: '--font-inter',
 });
 
 export const metadata: Metadata = {
   title: 'PURGE | X1 Token',
-  description: 'PURGE token interface on X1 blockchain. Mint, inspect, and manage PURGE tokens.',
+  description: 'PURGE token interface on X1 blockchain. Mint and manage PURGE tokens.',
   keywords: ['PURGE', 'X1', 'token', 'mint', 'crypto', 'blockchain'],
   openGraph: {
     title: 'PURGE | X1 Token',
@@ -33,15 +26,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${spaceMono.variable} ${shareTechMono.variable}`}>
-      <body className="bg-black text-white antialiased">
+    <html lang="en" className={inter.variable}>
+      <body className="bg-slate-50 text-slate-900 antialiased">
         <SolanaWalletProvider>
           <div className="min-h-screen flex flex-col">
             <Header />
             <main className="flex-1">{children}</main>
-            <footer className="border-t border-purge-red/10 py-6 text-center">
-              <p className="text-purge-red/20 font-mono text-xs tracking-widest">
-                PURGE TOKEN — X1 MAINNET — {new Date().getFullYear()}
+            <footer className="border-t border-slate-200 py-6 text-center">
+              <p className="text-slate-400 text-sm">
+                PURGE Token on X1 Mainnet
               </p>
             </footer>
           </div>

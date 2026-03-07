@@ -2,134 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Override wallet adapter modal styles for dark/cyberpunk theme */
+/* Wallet adapter modal styles for light theme */
 .wallet-adapter-modal-wrapper {
-  background: rgba(0, 0, 0, 0.95) !important;
-  border: 1px solid rgba(220, 38, 38, 0.3) !important;
-  border-radius: 8px !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  border: 1px solid rgba(226, 232, 240, 1) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04) !important;
 }
 
 .wallet-adapter-modal-title {
-  color: #dc2626 !important;
-  font-family: var(--font-space-mono), monospace !important;
-  letter-spacing: 0.1em !important;
+  color: #1e293b !important;
+  font-family: system-ui, -apple-system, sans-serif !important;
+  font-weight: 600 !important;
 }
 
 .wallet-adapter-button {
-  background: rgba(220, 38, 38, 0.1) !important;
-  border: 1px solid rgba(220, 38, 38, 0.3) !important;
+  background: white !important;
+  border: 1px solid #e2e8f0 !important;
+  border-radius: 8px !important;
   transition: all 0.2s !important;
-  font-family: var(--font-space-mono), monospace !important;
+  font-family: system-ui, -apple-system, sans-serif !important;
+  color: #1e293b !important;
 }
 
 .wallet-adapter-button:hover {
-  background: rgba(220, 38, 38, 0.2) !important;
-  border-color: rgba(220, 38, 38, 0.6) !important;
+  background: #f8fafc !important;
+  border-color: #4f46e5 !important;
 }
 
 .wallet-adapter-button-trigger {
-  background: transparent !important;
-  border: 1px solid #dc2626 !important;
-  color: #dc2626 !important;
+  background: #4f46e5 !important;
+  border: 1px solid #4f46e5 !important;
+  color: white !important;
+  border-radius: 8px !important;
+  font-weight: 500 !important;
+}
+
+.wallet-adapter-button-trigger:hover {
+  background: #4338ca !important;
+  border-color: #4338ca !important;
 }
 
 .wallet-adapter-modal-list .wallet-adapter-button {
-  color: rgba(255, 255, 255, 0.8) !important;
+  color: #1e293b !important;
 }
 
 .wallet-adapter-modal-list-more-button-list-item button {
-  background: rgba(220, 38, 38, 0.05) !important;
+  background: #f8fafc !important;
 }
 
 .wallet-adapter-collapse-ul {
   background: transparent !important;
 }
 
-/* Scanline effect */
 @layer base {
   body {
-    font-family: var(--font-space-mono), 'Courier New', monospace;
-    background-color: #000;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #f8fafc;
+    color: #1e293b;
   }
-
-  /* CRT scanline overlay */
-  body::after {
-    content: '';
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0, 0, 0, 0.03) 2px,
-      rgba(0, 0, 0, 0.03) 4px
-    );
-    pointer-events: none;
-    z-index: 9999;
-    animation: scanlines 8s linear infinite;
-  }
-}
-
-@keyframes scanlines {
-  0% { background-position: 0 0; }
-  100% { background-position: 0 100px; }
-}
-
-@keyframes flicker {
-  0%, 100% { opacity: 1; }
-  92% { opacity: 1; }
-  93% { opacity: 0.96; }
-  94% { opacity: 1; }
-  96% { opacity: 0.94; }
-  97% { opacity: 1; }
-}
-
-@keyframes glow-pulse {
-  0%, 100% { box-shadow: 0 0 5px rgba(220, 38, 38, 0.3), 0 0 20px rgba(220, 38, 38, 0.1); }
-  50% { box-shadow: 0 0 10px rgba(220, 38, 38, 0.5), 0 0 30px rgba(220, 38, 38, 0.2); }
-}
-
-@keyframes terminal-cursor {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
-}
-
-.animate-flicker {
-  animation: flicker 6s infinite;
-}
-
-.animate-glow-pulse {
-  animation: glow-pulse 2s ease-in-out infinite;
-}
-
-.terminal-cursor::after {
-  content: '█';
-  animation: terminal-cursor 1s step-end infinite;
-  color: #dc2626;
-}
-
-/* Grid background */
-.bg-grid {
-  background-image:
-    linear-gradient(rgba(220, 38, 38, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(220, 38, 38, 0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-}
-
-/* Glow effects */
-.glow-red {
-  box-shadow: 0 0 10px rgba(220, 38, 38, 0.4), 0 0 30px rgba(220, 38, 38, 0.1);
-}
-
-.text-glow-red {
-  text-shadow: 0 0 10px rgba(220, 38, 38, 0.6), 0 0 20px rgba(220, 38, 38, 0.3);
-}
-
-.text-glow-cyan {
-  text-shadow: 0 0 10px rgba(0, 255, 170, 0.6), 0 0 20px rgba(0, 255, 170, 0.3);
 }
 
 /* Hide number input arrows */
@@ -140,4 +71,38 @@ input[type='number']::-webkit-outer-spin-button {
 }
 input[type='number'] {
   -moz-appearance: textfield;
+}
+
+/* Custom range slider styling */
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  outline: none;
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  background: #4f46e5;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+input[type='range']::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  background: #4f46e5;
+  border-radius: 50%;
+  cursor: pointer;
+  border: none;
 }

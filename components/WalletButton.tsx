@@ -17,10 +17,10 @@ function WalletButtonInner() {
     return (
       <button
         disabled
-        className="px-6 py-2 bg-purge-red/20 border border-purge-red/40 text-purge-red rounded font-mono text-sm cursor-wait flex items-center gap-2"
+        className="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg font-medium text-sm cursor-wait flex items-center gap-2"
       >
-        <span className="inline-block w-3 h-3 border-2 border-purge-red border-t-transparent rounded-full animate-spin" />
-        CONNECTING...
+        <span className="inline-block w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        Connecting...
       </button>
     );
   }
@@ -30,21 +30,20 @@ function WalletButtonInner() {
       <div className="relative">
         <button
           onClick={() => setShowDropdown(!showDropdown)}
-          className="px-6 py-2 bg-purge-red/10 border border-purge-red hover:bg-purge-red/20 text-purge-red rounded font-mono text-sm transition-all duration-200 flex items-center gap-2"
+          className="px-4 py-2 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 rounded-lg font-medium text-sm transition-all duration-200 flex items-center gap-2"
         >
-          <span className="w-2 h-2 bg-purge-green rounded-full animate-pulse" />
-          {wallet?.adapter.name === 'X1 Wallet' && (
-            <span className="text-purge-cyan text-xs">[X1]</span>
-          )}
+          <span className="w-2 h-2 bg-green-500 rounded-full" />
           {truncateAddress(publicKey.toBase58())}
-          <span className="ml-1 text-purge-red/60">▾</span>
+          <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
         </button>
 
         {showDropdown && (
-          <div className="absolute right-0 top-full mt-1 w-56 bg-black border border-purge-red/30 rounded shadow-xl z-50">
-            <div className="p-3 border-b border-purge-red/20">
-              <p className="text-purge-red/60 text-xs font-mono mb-1">CONNECTED WALLET</p>
-              <p className="text-purge-cyan text-xs font-mono break-all">
+          <div className="absolute right-0 top-full mt-1 w-64 bg-white border border-slate-200 rounded-xl shadow-lg z-50 overflow-hidden">
+            <div className="p-3 border-b border-slate-100">
+              <p className="text-slate-400 text-xs font-medium mb-1">Connected Wallet</p>
+              <p className="text-slate-900 text-xs font-mono break-all">
                 {publicKey.toBase58()}
               </p>
             </div>
@@ -53,9 +52,12 @@ function WalletButtonInner() {
                 disconnect();
                 setShowDropdown(false);
               }}
-              className="w-full p-3 text-left text-purge-red hover:bg-purge-red/10 font-mono text-sm transition-colors"
+              className="w-full p-3 text-left text-red-600 hover:bg-red-50 font-medium text-sm transition-colors flex items-center gap-2"
             >
-              ⏻ DISCONNECT
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Disconnect
             </button>
           </div>
         )}
@@ -73,9 +75,9 @@ function WalletButtonInner() {
   return (
     <button
       onClick={() => setVisible(true)}
-      className="px-6 py-2 bg-transparent border border-purge-red text-purge-red hover:bg-purge-red hover:text-black rounded font-mono text-sm transition-all duration-200 tracking-widest"
+      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium text-sm transition-all duration-200"
     >
-      CONNECT WALLET
+      Connect Wallet
     </button>
   );
 }
@@ -86,9 +88,9 @@ export function WalletButton() {
       fallback={
         <button
           disabled
-          className="px-6 py-2 bg-transparent border border-purge-red/30 text-purge-red/30 rounded font-mono text-sm tracking-widest cursor-wait"
+          className="px-4 py-2 bg-slate-100 text-slate-400 rounded-lg font-medium text-sm cursor-wait"
         >
-          CONNECT WALLET
+          Connect Wallet
         </button>
       }
     >
