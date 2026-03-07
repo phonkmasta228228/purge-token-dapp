@@ -104,18 +104,21 @@ export const ClaimRank: FC = () => {
 
       // Build claim_rank instruction
       // Args: term (u64, little-endian) = days * SECONDS_PER_DAY
-      const termSeconds = BigInt(term * SECONDS_PER_DAY);
-      const termBuf = Buffer.alloc(8);
-      termBuf.writeBigUInt64LE(termSeconds);
+      // Encode term as little-endian u64 (browser-safe, no writeBigUInt64LE)
+      const termSeconds = term * SECONDS_PER_DAY;
+      const termBuf = new Uint8Array(8);
+      let val = termSeconds;
+      for (let i = 0; i < 8; i++) {
+        termBuf[i] = val & 0xff;
+        val = Math.floor(val / 256);
+      }
 
-      // Anchor discriminator for "claim_rank"
-      const { createHash } = await import('crypto');
-      const discriminator = createHash('sha256')
-        .update('global:claim_rank')
-        .digest()
-        .slice(0, 8);
+      // Anchor discriminator: sha256("global:claim_rank")[0..8] via Web Crypto
+      const encoded = new TextEncoder().encode('global:claim_rank');
+      const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
+      const discriminator = new Uint8Array(hashBuffer).slice(0, 8);
 
-      const data = Buffer.concat([discriminator, termBuf]);
+      const data = Buffer.from(new Uint8Array([...discriminator, ...termBuf]));
 
       const ix = new TransactionInstruction({
         programId: PROGRAM_ID,
