@@ -355,7 +355,7 @@ export const ClaimRewards: FC = () => {
           </div>
           <div className="bg-[#111] border border-[#1a1a1a] rounded p-3 text-center">
             <div className="text-xs text-[#555] uppercase tracking-widest mb-1">Slots Used</div>
-            <div className="text-xl font-black text-white">{counter.nextSlot}<span className="text-sm font-normal text-[#555]">/255</span></div>
+            <div className="text-xl font-black text-white">{counter.nextSlot}<span className="text-sm font-normal text-[#555]"> used</span></div>
           </div>
         </div>
       )}

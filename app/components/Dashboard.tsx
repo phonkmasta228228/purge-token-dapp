@@ -204,7 +204,7 @@ export const Dashboard: FC = () => {
               <StatCard
                 label="Slots Used"
                 value={`${slotsUsed}`}
-                sub="out of 255 max slot IDs"
+                sub="lifetime slot IDs used"
               />
               <StatCard
                 label="Available"
