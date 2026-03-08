@@ -49,17 +49,19 @@ function parseCounter(data: Buffer): CounterData {
 }
 
 function parseUserMint(data: Buffer, slotId: number): UserMintData {
-  // UserMint layout: 8 disc | 32 owner | 4 slot_index (u32) | 8 term_days | 8 mature_ts | 1 claimed |
-  //                  8 rank | 8 amp_snapshot | 8 reward_amount | 1 bump
+  // UserMint layout: 8 disc | 32 owner | 4 slot_index (u32) | 8 term_days (u64) |
+  //                  8 mature_ts (i64) | 8 rank (u64) | 8 amp (u64) | 8 reward (u64) | 1 claimed | 1 bump
   let offset = 8;
   const owner = new PublicKey(data.slice(offset, offset + 32)).toBase58(); offset += 32;
   const parsedSlotId = data.readUInt32LE(offset); offset += 4;
   const termDays = data.readBigUInt64LE(offset); offset += 8;
   const maturityTs = BigInt(data.readBigInt64LE(offset)); offset += 8;
-  const claimed = data[offset] === 1; offset += 1;
-  const cRank = data.readBigUInt64LE(offset);
+  const cRank = data.readBigUInt64LE(offset); offset += 8;
+  // skip amp(8) + reward(8)
+  offset += 16;
+  const claimed = data[offset] === 1;
   const active = !claimed;
-  return { slotId: parsedSlotId !== undefined ? parsedSlotId : slotId, owner, cRank, termDays, maturityTs, active };
+  return { slotId: parsedSlotId, owner, cRank, termDays, maturityTs, active };
 }
 
 function getCountdown(maturityTs: bigint): string {
@@ -121,7 +123,7 @@ export const ClaimRewards: FC = () => {
         slotRange.map(async (slotId) => {
           const [mintPDA] = getUserMintPDA(pubkey, slotId);
           const info = await conn.getAccountInfo(mintPDA);
-          if (!info || info.data.length < 8 + 32 + 1 + 8 + 8 + 8 + 1 + 1) return null;
+          if (!info || info.data.length < 8 + 32 + 4 + 8 + 8 + 8 + 8 + 8 + 1 + 1) return null; // 86 bytes
           return parseUserMint(info.data as Buffer, slotId);
         })
       );
