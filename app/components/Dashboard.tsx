@@ -4,14 +4,13 @@ import { FC, useEffect, useState } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { PublicKey, Connection } from '@solana/web3.js';
 
-const PROGRAM_ID = new PublicKey('8g6XCgTdm5WnQmFRZYu4DMUCJyKU1JWxKmQ16KqweP2n');
-const PURGE_MINT = new PublicKey('CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP');
+const PROGRAM_ID = new PublicKey('6K6md8GFmT8fncNbWqHSJrduYfG6HgnFCp34jdouGVSM');
+const PURGE_MINT = new PublicKey('ENJrUxHe2tBy3SZp3AHp94Urra1Hs5eNyNWh9hJ8G7a5');
 const X1_RPC = 'https://rpc.mainnet.x1.xyz';
 const MAX_MINT_SLOTS = 200;
 
 interface GlobalState {
   totalMinters: bigint;
-  totalXBurnt: bigint;
   activeMints: bigint;
   genesisTs: bigint;
 }
@@ -23,13 +22,13 @@ interface UserCounter {
 }
 
 function parseGlobalState(data: Buffer): GlobalState {
-  // 8 disc + u64 total_minters + u64 total_x_burnt + u64 active_mints + i64 genesis_ts + u8 bump
+  // 8 disc + u64 total_minters + u64 _reserved + u64 active_mints + i64 genesis_ts + u8 bump
   let offset = 8;
   const totalMinters = data.readBigUInt64LE(offset); offset += 8;
-  const totalXBurnt = data.readBigUInt64LE(offset); offset += 8;
+  offset += 8; // reserved field
   const activeMints = data.readBigUInt64LE(offset); offset += 8;
   const genesisTs = data.readBigInt64LE(offset);
-  return { totalMinters, totalXBurnt, activeMints, genesisTs: BigInt(genesisTs) };
+  return { totalMinters, activeMints, genesisTs: BigInt(genesisTs) };
 }
 
 function parseUserCounter(data: Buffer): UserCounter {
@@ -140,7 +139,7 @@ export const Dashboard: FC = () => {
       {/* Global Stats */}
       <section>
         <div className="text-xs font-bold tracking-widest text-[#444] uppercase mb-4">Global Protocol Stats</div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <StatCard
             label="Total Minters"
             value={globalState ? formatLargeNum(globalState.totalMinters) : '—'}
@@ -154,12 +153,7 @@ export const Dashboard: FC = () => {
             sub="currently locked"
             loading={loadingGlobal}
           />
-          <StatCard
-            label="X Burnt"
-            value={globalState ? formatLargeNum(globalState.totalXBurnt) : '—'}
-            sub="total XEN burned"
-            loading={loadingGlobal}
-          />
+
           <StatCard
             label="Genesis"
             value={globalState
@@ -227,14 +221,15 @@ export const Dashboard: FC = () => {
         <div className="text-xs font-bold tracking-widest text-[#444] uppercase mb-4">Protocol Constants</div>
         <div className="bg-[#111] border border-[#1a1a1a] rounded-lg divide-y divide-[#0d0d0d]">
           {[
-            { label: 'Program ID', value: '8g6XCgTdm5WnQmFRZYu4DMUCJyKU1JWxKmQ16KqweP2n' },
-            { label: 'PURGE Mint', value: 'CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP' },
+            { label: 'Program ID', value: '6K6md8GFmT8fncNbWqHSJrduYfG6HgnFCp34jdouGVSM' },
+            { label: 'PURGE Mint', value: 'ENJrUxHe2tBy3SZp3AHp94Urra1Hs5eNyNWh9hJ8G7a5' },
             { label: 'Network', value: 'X1 Mainnet' },
             { label: 'Min Term', value: '1 day' },
             { label: 'Max Term', value: '100 days' },
             { label: 'Max Concurrent Mints', value: '200 per wallet' },
             { label: 'Genesis AMP', value: '69' },
-            { label: 'Min AMP', value: '10' },
+            { label: 'AMP Decay', value: '1 per day' },
+            { label: 'Min AMP', value: '0' },
             { label: 'Decimals', value: '18' },
           ].map(({ label, value }) => (
             <div key={label} className="px-5 py-3 flex items-center justify-between">

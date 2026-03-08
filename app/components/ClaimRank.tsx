@@ -11,15 +11,17 @@ import {
   Connection,
 } from '@solana/web3.js';
 
-const PROGRAM_ID = new PublicKey('8g6XCgTdm5WnQmFRZYu4DMUCJyKU1JWxKmQ16KqweP2n');
+const PROGRAM_ID = new PublicKey('6K6md8GFmT8fncNbWqHSJrduYfG6HgnFCp34jdouGVSM');
 const X1_RPC = 'https://rpc.mainnet.x1.xyz';
-const PURGE_MINT = new PublicKey('CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP');
+const PURGE_MINT = new PublicKey('ENJrUxHe2tBy3SZp3AHp94Urra1Hs5eNyNWh9hJ8G7a5');
 const MAX_MINT_SLOTS = 200;
 
-function estimatePurge(days: number): string {
-  const base = days * 100;
-  const amp = 1 + Math.log(days) * 0.5;
-  return Math.floor(base * amp).toLocaleString();
+// AMP starts at 69 on genesis day, decays by 1 per day, floors at 0.
+// reward = AMP × term_days (displayed without 10^18 decimals factor)
+const CURRENT_AMP = 69;
+
+function estimatePurge(days: number, amp: number = CURRENT_AMP): string {
+  return (amp * days).toLocaleString();
 }
 
 function shortenAddress(addr: string): string {
@@ -198,7 +200,6 @@ export const ClaimRank: FC = () => {
     }
   }, [connected, publicKey, sendTransaction, term, batchCount, loadCounter]);
 
-  const amplifier = parseFloat((1 + Math.log(term) * 0.5).toFixed(2));
   const maturityDate = new Date(Date.now() + term * 86400000);
   const successCount = batchResults.filter(r => r.success).length;
 
@@ -275,16 +276,14 @@ export const ClaimRank: FC = () => {
         {/* Stats */}
         <div className="grid grid-cols-2 gap-4">
           <div className="bg-[#0d0d0d] border border-[#1a1a1a] rounded p-4 text-center">
-            <div className="text-xs text-[#555] uppercase tracking-widest mb-1">Amplifier</div>
-            <div className="text-2xl font-black text-[#00FFAA]">{amplifier}×</div>
-            <div className="text-xs text-[#444] mt-1">
-              {term <= 30 ? 'Novice' : term <= 60 ? 'Adept' : 'Veteran'}
-            </div>
+            <div className="text-xs text-[#555] uppercase tracking-widest mb-1">AMP</div>
+            <div className="text-2xl font-black text-[#00FFAA]">{CURRENT_AMP}</div>
+            <div className="text-xs text-[#444] mt-1">decays 1/day from genesis</div>
           </div>
           <div className="bg-[#0d0d0d] border border-[#1a1a1a] rounded p-4 text-center">
             <div className="text-xs text-[#555] uppercase tracking-widest mb-1">Est. PURGE / mint</div>
             <div className="text-2xl font-black text-white">{estimatePurge(term)}</div>
-            <div className="text-xs text-[#444] mt-1">tokens</div>
+            <div className="text-xs text-[#444] mt-1">AMP × days</div>
           </div>
         </div>
 
@@ -399,7 +398,7 @@ export const ClaimRank: FC = () => {
         <div className="text-[#555] font-bold mb-2 uppercase tracking-widest">How it works</div>
         <div>• Choose a term between 1 and 100 days</div>
         <div>• Use batch mint to fire up to 200 mints at once (max 200 active per wallet)</div>
-        <div>• Longer terms earn higher amplifier multipliers</div>
+        <div>• Reward = AMP × term days (AMP starts at 69, decays by 1 per day, floors at 0)</div>
         <div>• PURGE tokens are claimable after each term expires</div>
         <div>• No pre-mine. No admin keys. Fair launch.</div>
       </div>
