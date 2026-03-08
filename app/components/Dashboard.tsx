@@ -15,6 +15,11 @@ interface GlobalState {
   genesisTs: bigint;
 }
 
+interface PurgeSupply {
+  uiAmount: number;
+  decimals: number;
+}
+
 interface UserCounter {
   totalMinted: number;
   activeCount: number;
@@ -68,6 +73,7 @@ const StatCard: FC<StatCardProps> = ({ label, value, sub, accent, loading }) => 
 export const Dashboard: FC = () => {
   const { connected, publicKey } = useWallet();
   const [globalState, setGlobalState] = useState<GlobalState | null>(null);
+  const [purgeSupply, setPurgeSupply] = useState<PurgeSupply | null>(null);
   const [userCounter, setUserCounter] = useState<UserCounter | null>(null);
   const [loadingGlobal, setLoadingGlobal] = useState(true);
   const [loadingUser, setLoadingUser] = useState(false);
@@ -85,6 +91,17 @@ export const Dashboard: FC = () => {
         const info = await conn.getAccountInfo(globalPDA);
         if (info && info.data.length >= 8 + 32) {
           setGlobalState(parseGlobalState(info.data as unknown as Buffer));
+        }
+
+        // Fetch PURGE token supply
+        try {
+          const supplyResp = await conn.getTokenSupply(PURGE_MINT);
+          setPurgeSupply({
+            uiAmount: supplyResp.value.uiAmount ?? 0,
+            decimals: supplyResp.value.decimals,
+          });
+        } catch {
+          // non-fatal — just leave supply as null
         }
       } catch {
         setError('Could not load global state from chain.');
@@ -160,6 +177,15 @@ export const Dashboard: FC = () => {
               ? new Date(Number(globalState.genesisTs) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })
               : '—'}
             sub="program launch date"
+            loading={loadingGlobal}
+          />
+          <StatCard
+            label="PURGE Supply"
+            value={purgeSupply
+              ? formatLargeNum(BigInt(Math.floor(purgeSupply.uiAmount)))
+              : '—'}
+            sub="circulating tokens minted"
+            accent
             loading={loadingGlobal}
           />
         </div>
