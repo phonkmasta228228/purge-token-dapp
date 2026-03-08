@@ -74,7 +74,12 @@ const TXS_PER_WAVE = 10;        // transactions per wave (each covers SLOTS_PER_
 const WAVE_GAP_MS = 400;        // ms pause between waves
 
 export const ClaimRank: FC = () => {
-  const { connected, publicKey, sendTransaction, signAllTransactions } = useWallet();
+  const { connected, publicKey, sendTransaction, signAllTransactions, wallet } = useWallet();
+
+  // X1 Wallet has a Chrome extension bug: chrome.action.openPopup() is restricted,
+  // so signAllTransactions fails with "not a function". Detect and force sequential mode.
+  const isX1Wallet = wallet?.adapter?.name?.toLowerCase().includes('x1');
+  const canBatchSign = !!signAllTransactions && !isX1Wallet;
   const [term, setTerm] = useState(30);
   const [batchCount, setBatchCount] = useState(5);
   const [slotsPerTx, setSlotsPerTx] = useState(SLOTS_PER_TX);
@@ -217,7 +222,7 @@ export const ClaimRank: FC = () => {
       const allResults: BatchResult[] = [];
 
       // ── Path A: signAllTransactions (one approval for everything) ──────────
-      if (signAllTransactions && txSlotGroups.length > 1) {
+      if (canBatchSign && txSlotGroups.length > 1) {
         setWaveStats({ sent: 0, succeeded: 0, failed: 0, wave: 1, totalWaves: 1 });
 
         const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
@@ -330,7 +335,7 @@ export const ClaimRank: FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [connected, publicKey, sendTransaction, signAllTransactions, buildClaimTx, term, batchCount, slotsPerTx, loadCounter]);
+  }, [connected, publicKey, sendTransaction, signAllTransactions, canBatchSign, buildClaimTx, term, batchCount, slotsPerTx, loadCounter]);
 
   const maturityDate = new Date(Date.now() + term * 86400000);
   const successCount = batchResults.filter(r => r.success).length;
@@ -491,16 +496,18 @@ export const ClaimRank: FC = () => {
                     : `Preparing ${Math.ceil(batchCount / slotsPerTx)} tx${Math.ceil(batchCount / slotsPerTx) > 1 ? 's' : ''}...`}
                 </span>
               ) : batchCount > 1
-                ? signAllTransactions
+                ? canBatchSign
                   ? `⚡ Batch Mint × ${batchCount} slots — 1 approval — ${term} Days`
                   : `⚡ Batch Mint × ${batchCount} slots — ${Math.ceil(batchCount / slotsPerTx)} approvals — ${term} Days`
                 : `⚡ Claim Rank — ${term} Days`}
             </button>
             {!loading && batchCount > 1 && (
-              <div className={`text-center text-xs py-1 ${signAllTransactions ? 'text-[#00FFAA]' : 'text-[#555]'}`}>
-                {signAllTransactions
+              <div className={`text-center text-xs py-1 ${canBatchSign ? 'text-[#00FFAA]' : 'text-[#555]'}`}>
+                {canBatchSign
                   ? '✓ Your wallet supports batch signing — one approval for all transactions'
-                  : '⚠ Your wallet will prompt once per transaction'}
+                  : isX1Wallet
+                    ? '⚠ X1 Wallet: approving one transaction at a time'
+                    : '⚠ Your wallet will prompt once per transaction'}
               </div>
             )}
             {loading && (
