@@ -14,7 +14,7 @@ import {
 const PROGRAM_ID = new PublicKey('6K6md8GFmT8fncNbWqHSJrduYfG6HgnFCp34jdouGVSM');
 const X1_RPC = 'https://rpc.mainnet.x1.xyz';
 const PURGE_MINT = new PublicKey('ENJrUxHe2tBy3SZp3AHp94Urra1Hs5eNyNWh9hJ8G7a5');
-const MAX_MINT_SLOTS = 200;
+const MAX_MINT_SLOTS = 2500000;
 
 // AMP starts at 69 on genesis day, decays by 1 per day, floors at 0.
 // reward = AMP × term_days (displayed without 10^18 decimals factor)
@@ -229,7 +229,7 @@ export const ClaimRank: FC = () => {
       {/* Limit Warning */}
       {atLimit && (
         <div className="mb-4 bg-[#1a0000] border border-red-800 text-red-400 rounded px-4 py-3 text-xs font-bold tracking-widest uppercase">
-          ⚠ Max Mints Reached (200/200) — Claim existing rewards to free slots
+          ⚠ Max Mints Reached (2,500,000/2,500,000) — Claim existing rewards to free slots
         </div>
       )}
 
@@ -258,7 +258,7 @@ export const ClaimRank: FC = () => {
             <span className="text-[#00FFAA] font-black text-lg">{batchCount} <span className="text-sm font-normal text-[#555]">mint{batchCount > 1 ? 's' : ''}</span></span>
           </div>
           <input
-            type="range" min={1} max={200} value={batchCount}
+            type="range" min={1} max={2500000} value={batchCount}
             onChange={(e) => setBatchCount(Number(e.target.value))}
             className="w-full"
             disabled={atLimit}
@@ -321,7 +321,7 @@ export const ClaimRank: FC = () => {
           </div>
         ) : atLimit ? (
           <div className="w-full py-4 bg-[#1a0000] border border-red-800 text-red-400 font-black text-sm tracking-widest rounded text-center uppercase">
-            ⚠ 200/200 — Claim rewards to free slots
+            ⚠ 2,500,000/2,500,000 — Claim rewards to free slots
           </div>
         ) : (
           <button
@@ -397,7 +397,7 @@ export const ClaimRank: FC = () => {
       <div className="mt-6 bg-[#111] border border-[#1a1a1a] rounded p-4 text-xs text-[#444] space-y-1">
         <div className="text-[#555] font-bold mb-2 uppercase tracking-widest">How it works</div>
         <div>• Choose a term between 1 and 100 days</div>
-        <div>• Use batch mint to fire up to 200 mints at once (max 200 active per wallet)</div>
+        <div>• Use batch mint to fire up to 2,500,000 mints at once (max 2,500,000 active per wallet)</div>
         <div>• Reward = AMP × term days (AMP starts at 69, decays by 1 per day, floors at 0)</div>
         <div>• PURGE tokens are claimable after each term expires</div>
         <div>• No pre-mine. No admin keys. Fair launch.</div>

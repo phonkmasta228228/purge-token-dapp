@@ -7,7 +7,7 @@ import { PublicKey, Connection } from '@solana/web3.js';
 const PROGRAM_ID = new PublicKey('6K6md8GFmT8fncNbWqHSJrduYfG6HgnFCp34jdouGVSM');
 const PURGE_MINT = new PublicKey('ENJrUxHe2tBy3SZp3AHp94Urra1Hs5eNyNWh9hJ8G7a5');
 const X1_RPC = 'https://rpc.mainnet.x1.xyz';
-const MAX_MINT_SLOTS = 200;
+const MAX_MINT_SLOTS = 2500000;
 
 interface GlobalState {
   totalMinters: bigint;
@@ -186,7 +186,7 @@ export const Dashboard: FC = () => {
           <>
             {slotsFull && (
               <div className="mb-4 bg-[#1a0000] border border-red-800 text-red-400 rounded px-4 py-3 text-xs font-bold tracking-widest uppercase">
-                ⚠ Max Concurrent Mints Reached (200/200) — Claim rewards to free up slots
+                ⚠ Max Concurrent Mints Reached (2,500,000/2,500,000) — Claim rewards to free up slots
               </div>
             )}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -226,7 +226,7 @@ export const Dashboard: FC = () => {
             { label: 'Network', value: 'X1 Mainnet' },
             { label: 'Min Term', value: '1 day' },
             { label: 'Max Term', value: '100 days' },
-            { label: 'Max Concurrent Mints', value: '200 per wallet' },
+            { label: 'Max Concurrent Mints', value: '2,500,000 per wallet' },
             { label: 'Genesis AMP', value: '69' },
             { label: 'AMP Decay', value: '1 per day' },
             { label: 'Min AMP', value: '0' },
