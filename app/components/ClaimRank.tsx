@@ -89,13 +89,13 @@ export const ClaimRank: FC = () => {
       const conn = new Connection(X1_RPC, 'confirmed');
       const [pda] = getUserCounterPDA(pubkey);
       const info = await conn.getAccountInfo(pda);
-      if (info && info.data.length >= 8 + 32 + 8 + 1 + 1 + 1) {
+      if (info && info.data.length >= 8 + 4 + 4 + 1) {
         const data = info.data as Buffer;
-        let offset = 8 + 32;
-        const totalMinted = Number(data.readBigUInt64LE(offset)); offset += 8;
-        const activeCount = data[offset]; offset += 1;
-        const nextSlot = data[offset];
-        setCounter({ totalMinted, activeCount, nextSlot });
+        // UserCounter: 8 disc | 4 next_slot_index (u32) | 4 active_mints (u32) | 1 bump
+        let offset = 8;
+        const nextSlot = data.readUInt32LE(offset); offset += 4;
+        const activeCount = data.readUInt32LE(offset);
+        setCounter({ totalMinted: nextSlot, activeCount, nextSlot });
       } else {
         setCounter({ totalMinted: 0, activeCount: 0, nextSlot: 0 });
       }
@@ -165,11 +165,11 @@ export const ClaimRank: FC = () => {
       const counterInfo = await conn.getAccountInfo(counterPDA);
       let startSlot = 0;
       let currentActiveCount = 0;
-      if (counterInfo && counterInfo.data.length >= 8 + 32 + 8 + 1 + 1 + 1) {
+      if (counterInfo && counterInfo.data.length >= 8 + 4 + 4 + 1) {
         const d = counterInfo.data as Buffer;
-        let off = 8 + 32 + 8;
-        currentActiveCount = d[off]; off += 1;
-        startSlot = d[off];
+        // UserCounter: 8 disc | 4 next_slot_index (u32) | 4 active_mints (u32) | 1 bump
+        startSlot = d.readUInt32LE(8);
+        currentActiveCount = d.readUInt32LE(12);
       }
 
       const available = MAX_MINT_SLOTS - currentActiveCount;

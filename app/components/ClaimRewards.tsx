@@ -32,30 +32,33 @@ function getUserCounterPDA(userPubkey: PublicKey): [PublicKey, number] {
 }
 
 function getUserMintPDA(userPubkey: PublicKey, slotId: number): [PublicKey, number] {
+  const slotBuf = Buffer.alloc(4);
+  slotBuf.writeUInt32LE(slotId, 0);
   return PublicKey.findProgramAddressSync(
-    [Buffer.from('user_mint'), userPubkey.toBuffer(), Buffer.from([slotId])],
+    [Buffer.from('user_mint'), userPubkey.toBuffer(), slotBuf],
     PROGRAM_ID
   );
 }
 
 function parseCounter(data: Buffer): CounterData {
-  // 8 disc + 32 owner + 8 total_minted + 1 active_count + 1 next_slot + 1 bump
-  let offset = 8 + 32;
-  const totalMinted = Number(data.readBigUInt64LE(offset)); offset += 8;
-  const activeCount = data[offset]; offset += 1;
-  const nextSlot = data[offset];
-  return { totalMinted, activeCount, nextSlot };
+  // UserCounter layout: 8 disc | 4 next_slot_index (u32) | 4 active_mints (u32) | 1 bump
+  let offset = 8;
+  const nextSlot = data.readUInt32LE(offset); offset += 4;
+  const activeCount = data.readUInt32LE(offset);
+  return { totalMinted: nextSlot, activeCount, nextSlot };
 }
 
 function parseUserMint(data: Buffer, slotId: number): UserMintData {
-  // Layout: 8 disc + 32 owner + 1 slot_id + 8 c_rank + 8 term_days + 8 maturity_ts (i64) + 1 active + 1 bump
+  // UserMint layout: 8 disc | 32 owner | 4 slot_index (u32) | 8 term_days | 8 mature_ts | 1 claimed |
+  //                  8 rank | 8 amp_snapshot | 8 reward_amount | 1 bump
   let offset = 8;
   const owner = new PublicKey(data.slice(offset, offset + 32)).toBase58(); offset += 32;
-  const parsedSlotId = data[offset]; offset += 1;
-  const cRank = data.readBigUInt64LE(offset); offset += 8;
+  const parsedSlotId = data.readUInt32LE(offset); offset += 4;
   const termDays = data.readBigUInt64LE(offset); offset += 8;
   const maturityTs = BigInt(data.readBigInt64LE(offset)); offset += 8;
-  const active = data[offset] === 1;
+  const claimed = data[offset] === 1; offset += 1;
+  const cRank = data.readBigUInt64LE(offset);
+  const active = !claimed;
   return { slotId: parsedSlotId !== undefined ? parsedSlotId : slotId, owner, cRank, termDays, maturityTs, active };
 }
 
@@ -75,8 +78,10 @@ async function getDiscriminator(name: string): Promise<Uint8Array> {
   return new Uint8Array(hashBuffer).slice(0, 8);
 }
 
-function encodeU8(val: number): Uint8Array {
-  return new Uint8Array([val & 0xff]);
+function encodeU32LE(val: number): Uint8Array {
+  const buf = new Uint8Array(4);
+  new DataView(buf.buffer).setUint32(0, val, true);
+  return buf;
 }
 
 export const ClaimRewards: FC = () => {
@@ -171,9 +176,9 @@ export const ClaimRewards: FC = () => {
 
       // Anchor discriminator for claim_mint_reward
       const discriminator = await getDiscriminator('global:claim_mint_reward');
-      // Args: slot_id as u8
-      const slotBuf = encodeU8(slotId);
-      const data = Buffer.from(new Uint8Array([...discriminator, ...slotBuf]));
+      // Args: slot_index as u32 LE
+      const slotBuf = encodeU32LE(slotId);
+      const ixData = Buffer.from(new Uint8Array([...discriminator, ...slotBuf]));
 
       const { blockhash } = await conn.getLatestBlockhash('confirmed');
       const tx = new Transaction();
@@ -189,22 +194,24 @@ export const ClaimRewards: FC = () => {
         ));
       }
 
+      // Account order must match Anchor's ClaimMintReward struct:
+      // user_counter, user_mint, global_state, mint, mint_authority,
+      // user_token_account, user, system_program, token_program, associated_token_program
       const ix = new TransactionInstruction({
         programId: PROGRAM_ID,
         keys: [
-          { pubkey: userMintPDA, isSigner: false, isWritable: true },
-          { pubkey: counterPDA, isSigner: false, isWritable: true },
-          { pubkey: globalStatePDA, isSigner: false, isWritable: true },
-          { pubkey: PURGE_MINT, isSigner: false, isWritable: true },
-          { pubkey: mintAuthorityPDA, isSigner: false, isWritable: false },
-          { pubkey: userTokenAccount, isSigner: false, isWritable: true },
-          { pubkey: publicKey, isSigner: true, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-          { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-          { pubkey: new PublicKey('SysvarRent111111111111111111111111111111111'), isSigner: false, isWritable: false },
+          { pubkey: counterPDA,                    isSigner: false, isWritable: true  },
+          { pubkey: userMintPDA,                   isSigner: false, isWritable: true  },
+          { pubkey: globalStatePDA,                isSigner: false, isWritable: true  },
+          { pubkey: PURGE_MINT,                    isSigner: false, isWritable: true  },
+          { pubkey: mintAuthorityPDA,              isSigner: false, isWritable: false },
+          { pubkey: userTokenAccount,              isSigner: false, isWritable: true  },
+          { pubkey: publicKey,                     isSigner: true,  isWritable: true  },
+          { pubkey: SystemProgram.programId,       isSigner: false, isWritable: false },
+          { pubkey: TOKEN_PROGRAM_ID,              isSigner: false, isWritable: false },
+          { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID,   isSigner: false, isWritable: false },
         ],
-        data,
+        data: ixData,
       });
       tx.add(ix);
 
