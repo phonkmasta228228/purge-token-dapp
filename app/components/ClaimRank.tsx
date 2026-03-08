@@ -68,14 +68,15 @@ function encodeU64LE(val: number): Uint8Array {
   return buf;
 }
 
-const CHUNK_SIZE = 50;          // txs per wave
-const WAVE_GAP_MS = 300;        // ms pause between waves
+const SLOTS_PER_TX = 5;         // claim_rank instructions packed into one transaction (5 accounts each → ~35 acc limit)
+const TXS_PER_WAVE = 10;        // transactions per wave (each covers SLOTS_PER_TX slots)
+const WAVE_GAP_MS = 400;        // ms pause between waves
 
 export const ClaimRank: FC = () => {
   const { connected, publicKey, sendTransaction } = useWallet();
   const [term, setTerm] = useState(30);
-  const [batchCount, setBatchCount] = useState(1);
-  const [chunkSize, setChunkSize] = useState(CHUNK_SIZE);
+  const [batchCount, setBatchCount] = useState(5);
+  const [slotsPerTx, setSlotsPerTx] = useState(SLOTS_PER_TX);
   const [loading, setLoading] = useState(false);
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -148,8 +149,6 @@ export const ClaimRank: FC = () => {
     try {
       const conn = new Connection(X1_RPC, 'confirmed');
       const discriminator = await getDiscriminator('global:claim_rank');
-      const termBuf = encodeU64LE(term);
-      const data = Buffer.from(new Uint8Array([...discriminator, ...termBuf]));
 
       const [globalStatePDA] = PublicKey.findProgramAddressSync(
         [Buffer.from('global_state')], PROGRAM_ID
@@ -177,75 +176,85 @@ export const ClaimRank: FC = () => {
         return;
       }
 
-      // Chunked wave dispatch — fire chunkSize txs at a time, pause between waves
-      abortRef.current = false;
-      const totalWaves = Math.ceil(actualBatch / chunkSize);
+      // Build grouped transactions: each tx contains slotsPerTx claim_rank instructions.
+      // One wallet signature per tx covers all slots in that tx.
+      const txSlotGroups: number[][] = [];
+      for (let i = 0; i < actualBatch; i += slotsPerTx) {
+        txSlotGroups.push(
+          Array.from({ length: Math.min(slotsPerTx, actualBatch - i) }, (_, j) => startSlot + i + j)
+        );
+      }
+
+      const totalTxs = txSlotGroups.length;
+      // Process in waves of TXS_PER_WAVE transactions — each wave = parallel sendTransaction calls
+      const totalWaves = Math.ceil(totalTxs / TXS_PER_WAVE);
       const allResults: BatchResult[] = [];
 
       for (let wave = 0; wave < totalWaves; wave++) {
         if (abortRef.current) break;
 
-        const waveStart = wave * chunkSize;
-        const waveEnd = Math.min(waveStart + chunkSize, actualBatch);
-        const waveSize = waveEnd - waveStart;
+        const waveStart = wave * TXS_PER_WAVE;
+        const waveGroups = txSlotGroups.slice(waveStart, waveStart + TXS_PER_WAVE);
 
-        // Refresh blockhash each wave so txs don't expire
-        const { blockhash } = await conn.getLatestBlockhash('confirmed');
+        // Fresh blockhash per wave
+        const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
 
-        const wavePromises = Array.from({ length: waveSize }, async (_, j) => {
-          const slotId = startSlot + waveStart + j;
-          const [userMintPDA] = getUserMintPDA(publicKey, slotId);
-
-          const ix = new TransactionInstruction({
-            programId: PROGRAM_ID,
-            keys: [
-              { pubkey: counterPDA, isSigner: false, isWritable: true },
-              { pubkey: userMintPDA, isSigner: false, isWritable: true },
-              { pubkey: globalStatePDA, isSigner: false, isWritable: true },
-              { pubkey: publicKey, isSigner: true, isWritable: true },
-              { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-            ],
-            data,
-          });
-
+        const wavePromises = waveGroups.map(async (slots) => {
           const tx = new Transaction();
           tx.recentBlockhash = blockhash;
           tx.feePayer = publicKey;
-          tx.add(ix);
 
+          for (const slotId of slots) {
+            const termBuf = encodeU64LE(term);
+            const slotBuf = new Uint8Array(4);
+            new DataView(slotBuf.buffer).setUint32(0, slotId, true); // u32 LE
+            const ixData = Buffer.from(new Uint8Array([...discriminator, ...termBuf, ...slotBuf]));
+
+            const [userMintPDA] = getUserMintPDA(publicKey, slotId);
+            tx.add(new TransactionInstruction({
+              programId: PROGRAM_ID,
+              keys: [
+                { pubkey: counterPDA,      isSigner: false, isWritable: true },
+                { pubkey: userMintPDA,     isSigner: false, isWritable: true },
+                { pubkey: globalStatePDA,  isSigner: false, isWritable: true },
+                { pubkey: publicKey,       isSigner: true,  isWritable: true },
+                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+              ],
+              data: ixData,
+            }));
+          }
+
+          // One wallet pop-up for all slots in this tx
           try {
             const sig = await sendTransaction(tx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
-            await conn.confirmTransaction(sig, 'confirmed');
+            await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
             confirmTimestamps.current.push(Date.now());
-            return { slot: slotId, success: true, sig } as BatchResult;
+            return slots.map(slotId => ({ slot: slotId, success: true, sig } as BatchResult));
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
-            return { slot: slotId, success: false, error: msg } as BatchResult;
+            return slots.map(slotId => ({ slot: slotId, success: false, error: msg } as BatchResult));
           }
         });
 
         const waveSettled = await Promise.allSettled(wavePromises);
-        const waveResults: BatchResult[] = waveSettled.map((r, j) => {
+        const waveResults: BatchResult[] = waveSettled.flatMap((r, i) => {
           if (r.status === 'fulfilled') return r.value;
-          return { slot: startSlot + waveStart + j, success: false, error: String(r.reason) };
+          return waveGroups[i].map(slotId => ({ slot: slotId, success: false, error: String(r.reason) } as BatchResult));
         });
 
         allResults.push(...waveResults);
 
-        // Update UI progressively after each wave
         const sent = allResults.length;
         const succeeded = allResults.filter(r => r.success).length;
         const failed = sent - succeeded;
         setWaveStats({ sent, succeeded, failed, wave: wave + 1, totalWaves });
         setBatchResults([...allResults]);
 
-        // Gap between waves (skip after last wave)
         if (wave < totalWaves - 1 && !abortRef.current) {
           await new Promise(res => setTimeout(res, WAVE_GAP_MS));
         }
       }
 
-      // Refresh counter
       await loadCounter(publicKey);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -253,7 +262,7 @@ export const ClaimRank: FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [connected, publicKey, sendTransaction, term, batchCount, chunkSize, loadCounter]);
+  }, [connected, publicKey, sendTransaction, term, batchCount, slotsPerTx, loadCounter]);
 
   const maturityDate = new Date(Date.now() + term * 86400000);
   const successCount = batchResults.filter(r => r.success).length;
@@ -328,23 +337,23 @@ export const ClaimRank: FC = () => {
           )}
         </div>
 
-        {/* Wave / Chunk Size */}
+        {/* Slots per Transaction */}
         <div>
           <div className="flex justify-between items-center mb-3">
-            <label className="text-xs font-bold tracking-widest text-[#888] uppercase">Wave Size</label>
-            <span className="text-[#00FFAA] font-black text-lg">{chunkSize} <span className="text-sm font-normal text-[#555]">txs / wave</span></span>
+            <label className="text-xs font-bold tracking-widest text-[#888] uppercase">Slots per Tx</label>
+            <span className="text-[#00FFAA] font-black text-lg">{slotsPerTx} <span className="text-sm font-normal text-[#555]">slot{slotsPerTx > 1 ? 's' : ''} / signature</span></span>
           </div>
           <input
-            type="range" min={1} max={200} value={chunkSize}
-            onChange={(e) => setChunkSize(Number(e.target.value))}
+            type="range" min={1} max={6} value={slotsPerTx}
+            onChange={(e) => setSlotsPerTx(Number(e.target.value))}
             className="w-full"
             disabled={loading}
           />
           <div className="flex justify-between text-xs text-[#444] mt-1">
-            <span>1 (safe)</span><span>50 (default)</span><span>200 (aggressive)</span>
+            <span>1 slot</span><span>3 slots</span><span>6 slots</span>
           </div>
           <div className="text-xs text-[#444] mt-1">
-            Higher = more pressure per burst. Lower = gentler, fewer RPC drops.
+            Slots bundled per wallet signature. Higher = fewer approvals. Max ~6 per tx.
           </div>
         </div>
 
@@ -410,11 +419,11 @@ export const ClaimRank: FC = () => {
                 <span className="flex items-center justify-center gap-2">
                   <span className="animate-spin inline-block w-4 h-4 border-2 border-black border-t-transparent rounded-full"></span>
                   {waveStats
-                    ? `Wave ${waveStats.wave}/${waveStats.totalWaves} — ${waveStats.sent} sent · ${waveStats.succeeded} ✓ · ${waveStats.failed} ✗`
-                    : `Preparing ${batchCount} tx${batchCount > 1 ? 's' : ''}...`}
+                    ? `Wave ${waveStats.wave}/${waveStats.totalWaves} — ${waveStats.succeeded}/${waveStats.sent} slots confirmed`
+                    : `Preparing ${Math.ceil(batchCount / slotsPerTx)} tx${Math.ceil(batchCount / slotsPerTx) > 1 ? 's' : ''}...`}
                 </span>
               ) : batchCount > 1
-                ? `⚡ Batch Mint × ${batchCount} — ${term} Days`
+                ? `⚡ Batch Mint × ${batchCount} slots — ${Math.ceil(batchCount / slotsPerTx)} signature${Math.ceil(batchCount / slotsPerTx) > 1 ? 's' : ''} — ${term} Days`
                 : `⚡ Claim Rank — ${term} Days`}
             </button>
             {loading && (
@@ -523,7 +532,7 @@ export const ClaimRank: FC = () => {
       <div className="mt-6 bg-[#111] border border-[#1a1a1a] rounded p-4 text-xs text-[#444] space-y-1">
         <div className="text-[#555] font-bold mb-2 uppercase tracking-widest">How it works</div>
         <div>• Choose a term between 1 and 100 days</div>
-        <div>• Use batch mint to fire up to 2,500,000 mints at once (max 2,500,000 active per wallet)</div>
+        <div>• Use batch mint to claim multiple slots — up to 6 slots per wallet signature (fewer pop-ups)</div>
         <div>• Reward = AMP × term days (AMP starts at 69, decays by 1 per day, floors at 0)</div>
         <div>• PURGE tokens are claimable after each term expires</div>
         <div>• No pre-mine. No admin keys. Fair launch.</div>
