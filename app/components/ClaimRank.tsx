@@ -9,6 +9,7 @@ import {
   TransactionInstruction,
   SystemProgram,
   Connection,
+  SendOptions,
 } from '@solana/web3.js';
 
 const PROGRAM_ID = new PublicKey('6K6md8GFmT8fncNbWqHSJrduYfG6HgnFCp34jdouGVSM');
@@ -73,7 +74,7 @@ const TXS_PER_WAVE = 10;        // transactions per wave (each covers SLOTS_PER_
 const WAVE_GAP_MS = 400;        // ms pause between waves
 
 export const ClaimRank: FC = () => {
-  const { connected, publicKey, sendTransaction } = useWallet();
+  const { connected, publicKey, sendTransaction, signAllTransactions } = useWallet();
   const [term, setTerm] = useState(30);
   const [batchCount, setBatchCount] = useState(5);
   const [slotsPerTx, setSlotsPerTx] = useState(SLOTS_PER_TX);
@@ -135,6 +136,39 @@ export const ClaimRank: FC = () => {
   const atLimit = counter !== null && counter.activeCount >= MAX_MINT_SLOTS;
   const slotsRemaining = counter !== null ? MAX_MINT_SLOTS - counter.activeCount : MAX_MINT_SLOTS;
 
+  const buildClaimTx = useCallback((
+    slots: number[],
+    counterPDA: PublicKey,
+    globalStatePDA: PublicKey,
+    discriminator: Uint8Array,
+    blockhash: string,
+  ): Transaction => {
+    const tx = new Transaction();
+    tx.recentBlockhash = blockhash;
+    tx.feePayer = publicKey!;
+
+    for (const slotId of slots) {
+      const termBuf = encodeU64LE(term);
+      const slotBuf = new Uint8Array(4);
+      new DataView(slotBuf.buffer).setUint32(0, slotId, true); // u32 LE
+      const ixData = Buffer.from(new Uint8Array([...discriminator, ...termBuf, ...slotBuf]));
+      const [userMintPDA] = getUserMintPDA(publicKey!, slotId);
+
+      tx.add(new TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys: [
+          { pubkey: counterPDA,                  isSigner: false, isWritable: true },
+          { pubkey: userMintPDA,                 isSigner: false, isWritable: true },
+          { pubkey: globalStatePDA,              isSigner: false, isWritable: true },
+          { pubkey: publicKey!,                  isSigner: true,  isWritable: true },
+          { pubkey: SystemProgram.programId,     isSigner: false, isWritable: false },
+        ],
+        data: ixData,
+      }));
+    }
+    return tx;
+  }, [publicKey, term]);
+
   const handleBatchClaim = useCallback(async () => {
     if (!connected || !publicKey || !sendTransaction) return;
     setLoading(true);
@@ -153,8 +187,6 @@ export const ClaimRank: FC = () => {
       const [globalStatePDA] = PublicKey.findProgramAddressSync(
         [Buffer.from('global_state')], PROGRAM_ID
       );
-
-      // Re-read counter to get current next_slot
       const [counterPDA] = getUserCounterPDA(publicKey);
       const counterInfo = await conn.getAccountInfo(counterPDA);
       let startSlot = 0;
@@ -166,18 +198,15 @@ export const ClaimRank: FC = () => {
         startSlot = d[off];
       }
 
-      // Clamp batch to available slots
       const available = MAX_MINT_SLOTS - currentActiveCount;
       const actualBatch = Math.min(batchCount, available);
-
       if (actualBatch <= 0) {
         setError('No slots available — claim existing rewards first.');
         setLoading(false);
         return;
       }
 
-      // Build grouped transactions: each tx contains slotsPerTx claim_rank instructions.
-      // One wallet signature per tx covers all slots in that tx.
+      // Group slots into transactions (slotsPerTx per tx)
       const txSlotGroups: number[][] = [];
       for (let i = 0; i < actualBatch; i += slotsPerTx) {
         txSlotGroups.push(
@@ -185,73 +214,112 @@ export const ClaimRank: FC = () => {
         );
       }
 
-      const totalTxs = txSlotGroups.length;
-      // Process in waves of TXS_PER_WAVE transactions — each wave = parallel sendTransaction calls
-      const totalWaves = Math.ceil(totalTxs / TXS_PER_WAVE);
       const allResults: BatchResult[] = [];
 
-      for (let wave = 0; wave < totalWaves; wave++) {
-        if (abortRef.current) break;
+      // ── Path A: signAllTransactions (one approval for everything) ──────────
+      if (signAllTransactions && txSlotGroups.length > 1) {
+        setWaveStats({ sent: 0, succeeded: 0, failed: 0, wave: 1, totalWaves: 1 });
 
-        const waveStart = wave * TXS_PER_WAVE;
-        const waveGroups = txSlotGroups.slice(waveStart, waveStart + TXS_PER_WAVE);
-
-        // Fresh blockhash per wave
         const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+        const txs = txSlotGroups.map(slots =>
+          buildClaimTx(slots, counterPDA, globalStatePDA, discriminator, blockhash)
+        );
 
-        const wavePromises = waveGroups.map(async (slots) => {
-          const tx = new Transaction();
-          tx.recentBlockhash = blockhash;
-          tx.feePayer = publicKey;
+        // Single wallet approval for ALL transactions
+        let signedTxs: Transaction[];
+        try {
+          signedTxs = await signAllTransactions(txs);
+        } catch (e: unknown) {
+          throw new Error('Signing cancelled: ' + (e instanceof Error ? e.message : String(e)));
+        }
 
-          for (const slotId of slots) {
-            const termBuf = encodeU64LE(term);
-            const slotBuf = new Uint8Array(4);
-            new DataView(slotBuf.buffer).setUint32(0, slotId, true); // u32 LE
-            const ixData = Buffer.from(new Uint8Array([...discriminator, ...termBuf, ...slotBuf]));
+        // Submit all signed txs in parallel waves
+        const sendOpts: SendOptions = { skipPreflight: false, preflightCommitment: 'confirmed' };
+        const totalWaves = Math.ceil(signedTxs.length / TXS_PER_WAVE);
 
-            const [userMintPDA] = getUserMintPDA(publicKey, slotId);
-            tx.add(new TransactionInstruction({
-              programId: PROGRAM_ID,
-              keys: [
-                { pubkey: counterPDA,      isSigner: false, isWritable: true },
-                { pubkey: userMintPDA,     isSigner: false, isWritable: true },
-                { pubkey: globalStatePDA,  isSigner: false, isWritable: true },
-                { pubkey: publicKey,       isSigner: true,  isWritable: true },
-                { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-              ],
-              data: ixData,
-            }));
+        for (let wave = 0; wave < totalWaves; wave++) {
+          if (abortRef.current) break;
+
+          const waveSlice = signedTxs.slice(wave * TXS_PER_WAVE, (wave + 1) * TXS_PER_WAVE);
+          const waveGroups = txSlotGroups.slice(wave * TXS_PER_WAVE, (wave + 1) * TXS_PER_WAVE);
+
+          const wavePromises = waveSlice.map(async (signed, i) => {
+            const slots = waveGroups[i];
+            try {
+              const rawTx = signed.serialize();
+              const sig = await conn.sendRawTransaction(rawTx, sendOpts);
+              await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+              confirmTimestamps.current.push(Date.now());
+              return slots.map(slotId => ({ slot: slotId, success: true, sig } as BatchResult));
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              return slots.map(slotId => ({ slot: slotId, success: false, error: msg } as BatchResult));
+            }
+          });
+
+          const settled = await Promise.allSettled(wavePromises);
+          const waveResults = settled.flatMap((r, i) =>
+            r.status === 'fulfilled' ? r.value :
+            waveGroups[i].map(s => ({ slot: s, success: false, error: String(r.reason) } as BatchResult))
+          );
+
+          allResults.push(...waveResults);
+          setWaveStats({
+            sent: allResults.length,
+            succeeded: allResults.filter(r => r.success).length,
+            failed: allResults.filter(r => !r.success).length,
+            wave: wave + 1,
+            totalWaves,
+          });
+          setBatchResults([...allResults]);
+
+          if (wave < totalWaves - 1 && !abortRef.current) {
+            await new Promise(res => setTimeout(res, WAVE_GAP_MS));
           }
+        }
 
-          // One wallet pop-up for all slots in this tx
-          try {
-            const sig = await sendTransaction(tx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
-            await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
-            confirmTimestamps.current.push(Date.now());
-            return slots.map(slotId => ({ slot: slotId, success: true, sig } as BatchResult));
-          } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            return slots.map(slotId => ({ slot: slotId, success: false, error: msg } as BatchResult));
+      // ── Path B: sendTransaction fallback (one pop-up per tx) ──────────────
+      } else {
+        const totalWaves = Math.ceil(txSlotGroups.length / TXS_PER_WAVE);
+
+        for (let wave = 0; wave < totalWaves; wave++) {
+          if (abortRef.current) break;
+
+          const waveGroups = txSlotGroups.slice(wave * TXS_PER_WAVE, (wave + 1) * TXS_PER_WAVE);
+          const { blockhash, lastValidBlockHeight } = await conn.getLatestBlockhash('confirmed');
+
+          const wavePromises = waveGroups.map(async (slots) => {
+            const tx = buildClaimTx(slots, counterPDA, globalStatePDA, discriminator, blockhash);
+            try {
+              const sig = await sendTransaction(tx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
+              await conn.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, 'confirmed');
+              confirmTimestamps.current.push(Date.now());
+              return slots.map(slotId => ({ slot: slotId, success: true, sig } as BatchResult));
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              return slots.map(slotId => ({ slot: slotId, success: false, error: msg } as BatchResult));
+            }
+          });
+
+          const settled = await Promise.allSettled(wavePromises);
+          const waveResults = settled.flatMap((r, i) =>
+            r.status === 'fulfilled' ? r.value :
+            waveGroups[i].map(s => ({ slot: s, success: false, error: String(r.reason) } as BatchResult))
+          );
+
+          allResults.push(...waveResults);
+          setWaveStats({
+            sent: allResults.length,
+            succeeded: allResults.filter(r => r.success).length,
+            failed: allResults.filter(r => !r.success).length,
+            wave: wave + 1,
+            totalWaves,
+          });
+          setBatchResults([...allResults]);
+
+          if (wave < totalWaves - 1 && !abortRef.current) {
+            await new Promise(res => setTimeout(res, WAVE_GAP_MS));
           }
-        });
-
-        const waveSettled = await Promise.allSettled(wavePromises);
-        const waveResults: BatchResult[] = waveSettled.flatMap((r, i) => {
-          if (r.status === 'fulfilled') return r.value;
-          return waveGroups[i].map(slotId => ({ slot: slotId, success: false, error: String(r.reason) } as BatchResult));
-        });
-
-        allResults.push(...waveResults);
-
-        const sent = allResults.length;
-        const succeeded = allResults.filter(r => r.success).length;
-        const failed = sent - succeeded;
-        setWaveStats({ sent, succeeded, failed, wave: wave + 1, totalWaves });
-        setBatchResults([...allResults]);
-
-        if (wave < totalWaves - 1 && !abortRef.current) {
-          await new Promise(res => setTimeout(res, WAVE_GAP_MS));
         }
       }
 
@@ -262,7 +330,7 @@ export const ClaimRank: FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [connected, publicKey, sendTransaction, term, batchCount, slotsPerTx, loadCounter]);
+  }, [connected, publicKey, sendTransaction, signAllTransactions, buildClaimTx, term, batchCount, slotsPerTx, loadCounter]);
 
   const maturityDate = new Date(Date.now() + term * 86400000);
   const successCount = batchResults.filter(r => r.success).length;
@@ -423,9 +491,18 @@ export const ClaimRank: FC = () => {
                     : `Preparing ${Math.ceil(batchCount / slotsPerTx)} tx${Math.ceil(batchCount / slotsPerTx) > 1 ? 's' : ''}...`}
                 </span>
               ) : batchCount > 1
-                ? `⚡ Batch Mint × ${batchCount} slots — ${Math.ceil(batchCount / slotsPerTx)} signature${Math.ceil(batchCount / slotsPerTx) > 1 ? 's' : ''} — ${term} Days`
+                ? signAllTransactions
+                  ? `⚡ Batch Mint × ${batchCount} slots — 1 approval — ${term} Days`
+                  : `⚡ Batch Mint × ${batchCount} slots — ${Math.ceil(batchCount / slotsPerTx)} approvals — ${term} Days`
                 : `⚡ Claim Rank — ${term} Days`}
             </button>
+            {!loading && batchCount > 1 && (
+              <div className={`text-center text-xs py-1 ${signAllTransactions ? 'text-[#00FFAA]' : 'text-[#555]'}`}>
+                {signAllTransactions
+                  ? '✓ Your wallet supports batch signing — one approval for all transactions'
+                  : '⚠ Your wallet will prompt once per transaction'}
+              </div>
+            )}
             {loading && (
               <button
                 onClick={() => { abortRef.current = true; }}
