@@ -105,7 +105,7 @@ export const ClaimRewards: FC = () => {
       // Load counter first
       const [counterPDA] = getUserCounterPDA(pubkey);
       const counterInfo = await conn.getAccountInfo(counterPDA);
-      if (!counterInfo || counterInfo.data.length < 8 + 32 + 8 + 1 + 1 + 1) {
+      if (!counterInfo || counterInfo.data.length < 17) {
         setCounter(null);
         setMints([]);
         return;
