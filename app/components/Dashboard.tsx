@@ -7,7 +7,7 @@ import { PublicKey, Connection } from '@solana/web3.js';
 const PROGRAM_ID = new PublicKey('8g6XCgTdm5WnQmFRZYu4DMUCJyKU1JWxKmQ16KqweP2n');
 const PURGE_MINT = new PublicKey('CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP');
 const X1_RPC = 'https://rpc.mainnet.x1.xyz';
-const SECONDS_PER_DAY = 86400;
+const MAX_MINT_SLOTS = 200;
 
 interface GlobalState {
   totalMinters: bigint;
@@ -16,12 +16,10 @@ interface GlobalState {
   genesisTs: bigint;
 }
 
-interface UserMint {
-  termDays: bigint;
-  matureTs: bigint;
-  claimed: boolean;
-  rank: bigint;
-  rewardAmount: bigint;
+interface UserCounter {
+  totalMinted: number;
+  activeCount: number;
+  nextSlot: number;
 }
 
 function parseGlobalState(data: Buffer): GlobalState {
@@ -34,14 +32,13 @@ function parseGlobalState(data: Buffer): GlobalState {
   return { totalMinters, totalXBurnt, activeMints, genesisTs: BigInt(genesisTs) };
 }
 
-function parseUserMint(data: Buffer): UserMint {
-  let offset = 8 + 32; // disc + owner
-  const termDays = data.readBigUInt64LE(offset); offset += 8;
-  const matureTs = data.readBigInt64LE(offset); offset += 8;
-  const claimed = data[offset] === 1; offset += 1;
-  const rank = data.readBigUInt64LE(offset); offset += 8;
-  const rewardAmount = data.readBigUInt64LE(offset);
-  return { termDays, matureTs: BigInt(matureTs), claimed, rank, rewardAmount };
+function parseUserCounter(data: Buffer): UserCounter {
+  // 8 disc + 32 owner + 8 total_minted + 1 active_count + 1 next_slot + 1 bump
+  let offset = 8 + 32;
+  const totalMinted = Number(data.readBigUInt64LE(offset)); offset += 8;
+  const activeCount = data[offset]; offset += 1;
+  const nextSlot = data[offset];
+  return { totalMinted, activeCount, nextSlot };
 }
 
 function formatLargeNum(n: bigint): string {
@@ -72,7 +69,7 @@ const StatCard: FC<StatCardProps> = ({ label, value, sub, accent, loading }) => 
 export const Dashboard: FC = () => {
   const { connected, publicKey } = useWallet();
   const [globalState, setGlobalState] = useState<GlobalState | null>(null);
-  const [userMint, setUserMint] = useState<UserMint | null>(null);
+  const [userCounter, setUserCounter] = useState<UserCounter | null>(null);
   const [loadingGlobal, setLoadingGlobal] = useState(true);
   const [loadingUser, setLoadingUser] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,24 +99,24 @@ export const Dashboard: FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Load user_mint when wallet connects
+  // Load user_counter when wallet connects
   useEffect(() => {
-    if (!publicKey) { setUserMint(null); return; }
+    if (!publicKey) { setUserCounter(null); return; }
     const load = async () => {
       setLoadingUser(true);
       try {
         const conn = new Connection(X1_RPC, 'confirmed');
         const [pda] = PublicKey.findProgramAddressSync(
-          [Buffer.from('user_mint'), publicKey.toBuffer()], PROGRAM_ID
+          [Buffer.from('user_counter'), publicKey.toBuffer()], PROGRAM_ID
         );
         const info = await conn.getAccountInfo(pda);
-        if (info && info.data.length >= 8 + 32 + 8 + 8 + 1 + 8 + 8) {
-          setUserMint(parseUserMint(info.data as unknown as Buffer));
+        if (info && info.data.length >= 8 + 32 + 8 + 1 + 1 + 1) {
+          setUserCounter(parseUserCounter(info.data as unknown as Buffer));
         } else {
-          setUserMint(null);
+          setUserCounter(null);
         }
       } catch {
-        setUserMint(null);
+        setUserCounter(null);
       } finally {
         setLoadingUser(false);
       }
@@ -127,9 +124,9 @@ export const Dashboard: FC = () => {
     load();
   }, [publicKey]);
 
-  const termDays = userMint ? Number(userMint.termDays) : null;
-  const maturityDate = userMint ? new Date(Number(userMint.matureTs) * 1000) : null;
-  const isMature = userMint ? BigInt(Math.floor(Date.now() / 1000)) >= userMint.matureTs : false;
+  const slotsUsed = userCounter ? userCounter.nextSlot : 0;
+  const activeCount = userCounter ? userCounter.activeCount : 0;
+  const slotsFull = activeCount >= MAX_MINT_SLOTS;
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-10 space-y-10">
@@ -180,32 +177,48 @@ export const Dashboard: FC = () => {
         {!connected ? (
           <div className="bg-[#111] border border-[#1a1a1a] rounded-lg p-6 text-center">
             <div className="text-[#444] text-sm mb-1">Connect wallet to view personal stats</div>
-            <div className="text-xs text-[#333]">Your rank, term, and claim status will appear here</div>
+            <div className="text-xs text-[#333]">Your mint count and claim status will appear here</div>
           </div>
         ) : loadingUser ? (
           <div className="bg-[#111] border border-[#1a1a1a] rounded-lg p-6 text-center text-[#555] text-sm animate-pulse">
-            Loading your mint...
+            Loading your mints...
           </div>
-        ) : !userMint ? (
+        ) : !userCounter ? (
           <div className="bg-[#111] border border-[#1a1a1a] rounded-lg p-6 text-center">
-            <div className="text-[#444] text-sm mb-1">No active mint</div>
+            <div className="text-[#444] text-sm mb-1">No mints yet</div>
             <div className="text-xs text-[#333]">Go to the Mint tab to get started</div>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <StatCard label="Rank" value={`#${userMint.rank.toString()}`} sub="your minter number" accent />
-            <StatCard label="Term" value={`${termDays}d`} sub="lock duration" />
-            <StatCard
-              label="Maturity"
-              value={maturityDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) ?? '—'}
-              sub={isMature ? '✓ Ready!' : 'not yet'}
-            />
-            <StatCard
-              label="Status"
-              value={userMint.claimed ? 'Claimed' : isMature ? 'Mature' : 'Locked'}
-              sub={!userMint.claimed ? (isMature ? 'go claim rewards' : 'waiting for maturity') : 'reward collected'}
-            />
-          </div>
+          <>
+            {slotsFull && (
+              <div className="mb-4 bg-[#1a0000] border border-red-800 text-red-400 rounded px-4 py-3 text-xs font-bold tracking-widest uppercase">
+                ⚠ Max Concurrent Mints Reached (200/200) — Claim rewards to free up slots
+              </div>
+            )}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <StatCard
+                label="Active Mints"
+                value={`${activeCount}/${MAX_MINT_SLOTS}`}
+                sub={slotsFull ? '⚠ at limit' : 'concurrent slots'}
+                accent={activeCount > 0}
+              />
+              <StatCard
+                label="Lifetime Mints"
+                value={userCounter.totalMinted.toString()}
+                sub="total ever minted"
+              />
+              <StatCard
+                label="Slots Used"
+                value={`${slotsUsed}`}
+                sub="out of 255 max slot IDs"
+              />
+              <StatCard
+                label="Available"
+                value={`${MAX_MINT_SLOTS - activeCount}`}
+                sub="slots free to mint"
+              />
+            </div>
+          </>
         )}
       </section>
 
@@ -218,9 +231,11 @@ export const Dashboard: FC = () => {
             { label: 'PURGE Mint', value: 'CYrMpw3kX92ZtGbLF9p7nQSYt7mj1J1WvDidtt5rpCyP' },
             { label: 'Network', value: 'X1 Mainnet' },
             { label: 'Min Term', value: '1 day' },
-            { label: 'Max Term', value: '500 days' },
+            { label: 'Max Term', value: '100 days' },
+            { label: 'Max Concurrent Mints', value: '200 per wallet' },
+            { label: 'Genesis AMP', value: '69' },
+            { label: 'Min AMP', value: '10' },
             { label: 'Decimals', value: '18' },
-            { label: 'Max Amplifier (UI)', value: `${(1 + Math.log(500) * 0.5).toFixed(2)}×` },
           ].map(({ label, value }) => (
             <div key={label} className="px-5 py-3 flex items-center justify-between">
               <span className="text-xs text-[#555] uppercase tracking-widest">{label}</span>
