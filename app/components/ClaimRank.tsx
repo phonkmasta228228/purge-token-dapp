@@ -82,7 +82,11 @@ export const ClaimRank: FC = () => {
   const [counter, setCounter] = useState<CounterData | null>(null);
   const [checkingCounter, setCheckingCounter] = useState(false);
   const [waveStats, setWaveStats] = useState<{ sent: number; succeeded: number; failed: number; wave: number; totalWaves: number } | null>(null);
+  const [tps, setTps] = useState<number | null>(null);
+  const [peakTps, setPeakTps] = useState<number>(0);
   const abortRef = useRef(false);
+  // Rolling TPS: timestamps of recent confirmations (last 5s)
+  const confirmTimestamps = useRef<number[]>([]);
 
   const loadCounter = useCallback(async (pubkey: PublicKey) => {
     setCheckingCounter(true);
@@ -113,6 +117,20 @@ export const ClaimRank: FC = () => {
     loadCounter(publicKey);
   }, [publicKey, loadCounter]);
 
+  // TPS ticker: recomputes every 500ms from rolling confirmation timestamps
+  useEffect(() => {
+    if (!loading) return;
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const window = 5000; // 5-second rolling window
+      confirmTimestamps.current = confirmTimestamps.current.filter(t => now - t < window);
+      const currentTps = confirmTimestamps.current.length / (window / 1000);
+      setTps(currentTps);
+      setPeakTps(prev => Math.max(prev, currentTps));
+    }, 500);
+    return () => clearInterval(interval);
+  }, [loading]);
+
   const atLimit = counter !== null && counter.activeCount >= MAX_MINT_SLOTS;
   const slotsRemaining = counter !== null ? MAX_MINT_SLOTS - counter.activeCount : MAX_MINT_SLOTS;
 
@@ -122,6 +140,9 @@ export const ClaimRank: FC = () => {
     setError(null);
     setBatchResults([]);
     setWaveStats(null);
+    setTps(null);
+    setPeakTps(0);
+    confirmTimestamps.current = [];
     abortRef.current = false;
 
     try {
@@ -195,6 +216,7 @@ export const ClaimRank: FC = () => {
           try {
             const sig = await sendTransaction(tx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
             await conn.confirmTransaction(sig, 'confirmed');
+            confirmTimestamps.current.push(Date.now());
             return { slot: slotId, success: true, sig } as BatchResult;
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
@@ -411,6 +433,37 @@ export const ClaimRank: FC = () => {
                 />
               </div>
             )}
+          </div>
+        )}
+
+        {/* TPS Gauge */}
+        {(loading || (tps !== null && batchResults.length > 0)) && (
+          <div className="bg-[#0d0d0d] border border-[#1a1a1a] rounded-lg p-4">
+            <div className="text-xs text-[#555] uppercase tracking-widest font-bold mb-3">Live TPS</div>
+            <div className="flex items-end gap-6">
+              <div className="text-center">
+                <div className="text-3xl font-black text-[#00FFAA] tabular-nums">
+                  {tps !== null ? tps.toFixed(1) : '—'}
+                </div>
+                <div className="text-xs text-[#555] mt-1">confirmed / sec</div>
+              </div>
+              <div className="text-center">
+                <div className="text-3xl font-black text-white tabular-nums">
+                  {peakTps > 0 ? peakTps.toFixed(1) : '—'}
+                </div>
+                <div className="text-xs text-[#555] mt-1">peak TPS</div>
+              </div>
+              <div className="flex-1">
+                {/* TPS bar relative to peak */}
+                <div className="w-full bg-[#111] border border-[#222] rounded h-6 overflow-hidden">
+                  <div
+                    className="h-full bg-[#00FFAA] transition-all duration-500"
+                    style={{ width: peakTps > 0 && tps !== null ? `${Math.min((tps / peakTps) * 100, 100)}%` : '0%' }}
+                  />
+                </div>
+                <div className="text-xs text-[#444] mt-1 text-right">5s rolling window</div>
+              </div>
+            </div>
           </div>
         )}
 
