@@ -49,8 +49,10 @@ function getUserCounterPDA(userPubkey: PublicKey): [PublicKey, number] {
 }
 
 function getUserMintPDA(userPubkey: PublicKey, slotId: number): [PublicKey, number] {
+  const slotBuf = Buffer.alloc(4);
+  slotBuf.writeUInt32LE(slotId, 0);
   return PublicKey.findProgramAddressSync(
-    [Buffer.from('user_mint'), userPubkey.toBuffer(), Buffer.from([slotId])],
+    [Buffer.from('user_mint'), userPubkey.toBuffer(), slotBuf],
     PROGRAM_ID
   );
 }
