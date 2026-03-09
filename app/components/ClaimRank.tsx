@@ -17,10 +17,17 @@ const X1_RPC = 'https://rpc.mainnet.x1.xyz';
 const PURGE_MINT = new PublicKey('ENJrUxHe2tBy3SZp3AHp94Urra1Hs5eNyNWh9hJ8G7a5');
 const MAX_MINT_SLOTS = 2500000;
 
-const CURRENT_AMP = 69;
+const AMP_START = 69;
 const SLOTS_PER_TX = 5;
 
-function estimatePurge(days: number, amp: number = CURRENT_AMP): string {
+/** Derive current AMP from genesis timestamp (decays 1/day, floors at 0) */
+function computeAmp(genesisTs: bigint): number {
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const daysPassed = Number((now - genesisTs) / 86400n);
+  return Math.max(0, AMP_START - daysPassed);
+}
+
+function estimatePurge(days: number, amp: number): string {
   return (amp * days).toLocaleString();
 }
 
@@ -82,6 +89,8 @@ export const ClaimRank: FC = () => {
   const [counter, setCounter] = useState<CounterData | null>(null);
   const [checkingCounter, setCheckingCounter] = useState(false);
   const [progress, setProgress] = useState<{ sent: number; succeeded: number; failed: number } | null>(null);
+  const [currentAmp, setCurrentAmp] = useState<number | null>(null);
+  const [ampLoading, setAmpLoading] = useState(true);
 
   const loadCounter = useCallback(async (pubkey: PublicKey) => {
     setCheckingCounter(true);
@@ -110,6 +119,35 @@ export const ClaimRank: FC = () => {
     if (!publicKey) { setCounter(null); return; }
     loadCounter(publicKey);
   }, [publicKey, loadCounter]);
+
+  // Fetch live AMP from global_state on mount (doesn't require wallet)
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchAmp() {
+      setAmpLoading(true);
+      try {
+        const conn = new Connection(X1_RPC, 'confirmed');
+        const [globalStatePDA] = PublicKey.findProgramAddressSync(
+          [Buffer.from('global_state')], PROGRAM_ID
+        );
+        const info = await conn.getAccountInfo(globalStatePDA);
+        if (!info || !info.data || info.data.length < 8 + 8 + 8 + 8 + 8) {
+          if (!cancelled) setCurrentAmp(AMP_START); // fallback
+          return;
+        }
+        const data = info.data as Buffer;
+        // GlobalState layout: 8 disc | u64 total_minters | u64 _reserved | u64 active_mints | i64 genesis_ts | u8 bump
+        const genesisTs = data.readBigInt64LE(8 + 8 + 8 + 8);
+        if (!cancelled) setCurrentAmp(computeAmp(BigInt(genesisTs)));
+      } catch {
+        if (!cancelled) setCurrentAmp(AMP_START); // fallback to hardcoded if RPC fails
+      } finally {
+        if (!cancelled) setAmpLoading(false);
+      }
+    }
+    fetchAmp();
+    return () => { cancelled = true; };
+  }, []);
 
   const atLimit = counter !== null && counter.activeCount >= MAX_MINT_SLOTS;
   const slotsRemaining = counter !== null ? MAX_MINT_SLOTS - counter.activeCount : MAX_MINT_SLOTS;
@@ -292,12 +330,16 @@ export const ClaimRank: FC = () => {
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-[#0d0d0d] border border-[#1a1a1a] rounded p-3 text-center">
             <div className="text-xs text-[#555] uppercase tracking-widest mb-1">AMP</div>
-            <div className="text-2xl font-black text-[#00FFAA]">{CURRENT_AMP}</div>
-            <div className="text-xs text-[#444] mt-1">decays 1/day</div>
+            <div className={`text-2xl font-black text-[#00FFAA] ${ampLoading ? 'animate-pulse opacity-40' : ''}`}>
+              {ampLoading ? '…' : currentAmp}
+            </div>
+            <div className="text-xs text-[#444] mt-1">live · decays 1/day</div>
           </div>
           <div className="bg-[#0d0d0d] border border-[#1a1a1a] rounded p-3 text-center">
             <div className="text-xs text-[#555] uppercase tracking-widest mb-1">Est. PURGE</div>
-            <div className="text-xl font-black text-white">{(CURRENT_AMP * term * slotsPerTx).toLocaleString()}</div>
+            <div className={`text-xl font-black text-white ${ampLoading ? 'animate-pulse opacity-40' : ''}`}>
+              {ampLoading ? '…' : ((currentAmp ?? 0) * term * slotsPerTx).toLocaleString()}
+            </div>
             <div className="text-xs text-[#444] mt-1">{slotsPerTx > 1 ? `${slotsPerTx} mints total` : 'per mint'}</div>
           </div>
           <div className="bg-[#0d0d0d] border border-[#1a1a1a] rounded p-3 text-center">
@@ -432,7 +474,8 @@ export const ClaimRank: FC = () => {
         <div className="text-[#555] font-bold mb-2 uppercase tracking-widest">How it works</div>
         <div>• Choose a term between 1 and 100 days</div>
         <div>• Use batch mint to claim multiple mints — up to 16 per wallet signature (fewer pop-ups)</div>
-        <div>• Reward = AMP × term days (AMP starts at 69, decays by 1 per day, floors at 0)</div>
+        <div>• Reward = AMP × term days (AMP decays by 1 per day from genesis, floors at 0)</div>
+        <div>• Current AMP is fetched live from the on-chain global_state account</div>
         <div>• PURGE tokens are claimable after each term expires</div>
         <div>• No pre-mine. No admin keys. Fair launch.</div>
       </div>
