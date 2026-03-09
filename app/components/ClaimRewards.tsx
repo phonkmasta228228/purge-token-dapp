@@ -183,8 +183,10 @@ export const ClaimRewards: FC = () => {
         [Buffer.from('mint_authority')], PROGRAM_ID
       );
 
-      const { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
-      const userTokenAccount = await getAssociatedTokenAddress(PURGE_MINT, publicKey);
+      const { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
+      // Program was compiled with non-standard ASSOCIATED_TOKEN_PROGRAM_ID — must match exactly
+      const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+      const userTokenAccount = await getAssociatedTokenAddress(PURGE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
 
       // Anchor discriminator for claim_mint_reward (hardcoded: 3f191054743316de)
       const slotBuf = encodeU32LE(slotId);
@@ -255,8 +257,10 @@ export const ClaimRewards: FC = () => {
 
     try {
       const conn = new Connection(X1_RPC, 'confirmed');
-      const { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
-      const userTokenAccount = await getAssociatedTokenAddress(PURGE_MINT, publicKey);
+      const { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
+      // Program was compiled with non-standard ASSOCIATED_TOKEN_PROGRAM_ID — must match exactly
+      const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+      const userTokenAccount = await getAssociatedTokenAddress(PURGE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
       const [counterPDA] = getUserCounterPDA(publicKey);
       const [globalStatePDA] = PublicKey.findProgramAddressSync([Buffer.from('global_state')], PROGRAM_ID);
       const [mintAuthorityPDA] = PublicKey.findProgramAddressSync([Buffer.from('mint_authority')], PROGRAM_ID);
