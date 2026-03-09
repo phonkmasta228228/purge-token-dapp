@@ -278,13 +278,13 @@ export const ClaimRank: FC = () => {
             <span className="text-[#00FFAA] font-black text-lg">{slotsPerTx} <span className="text-sm font-normal text-[#555]">mint{slotsPerTx > 1 ? 's' : ''}</span></span>
           </div>
           <input
-            type="range" min={1} max={20} value={slotsPerTx}
+            type="range" min={1} max={16} value={slotsPerTx}
             onChange={(e) => setSlotsPerTx(Number(e.target.value))}
             className="w-full"
             disabled={loading}
           />
           <div className="flex justify-between text-xs text-[#444] mt-1">
-            <span>1</span><span>5</span><span>10</span><span>15</span><span>20</span>
+            <span>1</span><span>4</span><span>8</span><span>12</span><span>16</span>
           </div>
         </div>
 
@@ -431,7 +431,7 @@ export const ClaimRank: FC = () => {
       <div className="mt-6 bg-[#111] border border-[#1a1a1a] rounded p-4 text-xs text-[#444] space-y-1">
         <div className="text-[#555] font-bold mb-2 uppercase tracking-widest">How it works</div>
         <div>• Choose a term between 1 and 100 days</div>
-        <div>• Use batch mint to claim multiple mints — up to 20 per wallet signature (fewer pop-ups)</div>
+        <div>• Use batch mint to claim multiple mints — up to 16 per wallet signature (fewer pop-ups)</div>
         <div>• Reward = AMP × term days (AMP starts at 69, decays by 1 per day, floors at 0)</div>
         <div>• PURGE tokens are claimable after each term expires</div>
         <div>• No pre-mine. No admin keys. Fair launch.</div>
