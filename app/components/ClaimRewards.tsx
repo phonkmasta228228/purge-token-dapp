@@ -84,11 +84,9 @@ function getCountdown(maturityTs: bigint): string {
   return `${Math.max(1, minutes)}M REMAINING`;
 }
 
-async function getDiscriminator(name: string): Promise<Uint8Array> {
-  const encoded = new TextEncoder().encode(name);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', encoded);
-  return new Uint8Array(hashBuffer).slice(0, 8);
-}
+// Anchor discriminator for claim_mint_reward (computed from Rust source)
+// SHA-256("global:claim_mint_reward")[0..8] = 3f191054743316de
+const CLAIM_MINT_REWARD_DISCRIMINATOR = new Uint8Array([0x3f, 0x19, 0x10, 0x54, 0x74, 0x33, 0x16, 0xde]);
 
 function encodeU32LE(val: number): Uint8Array {
   const buf = new Uint8Array(4);
@@ -188,11 +186,9 @@ export const ClaimRewards: FC = () => {
       const { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
       const userTokenAccount = await getAssociatedTokenAddress(PURGE_MINT, publicKey);
 
-      // Anchor discriminator for claim_mint_reward
-      const discriminator = await getDiscriminator('global:claim_mint_reward');
-      // Args: slot_index as u32 LE
+      // Anchor discriminator for claim_mint_reward (hardcoded: 3f191054743316de)
       const slotBuf = encodeU32LE(slotId);
-      const ixData = Buffer.from(new Uint8Array([...discriminator, ...slotBuf]));
+      const ixData = Buffer.from(new Uint8Array([...CLAIM_MINT_REWARD_DISCRIMINATOR, ...slotBuf]));
 
       const { blockhash } = await conn.getLatestBlockhash('confirmed');
       const tx = new Transaction();
@@ -264,7 +260,6 @@ export const ClaimRewards: FC = () => {
       const [counterPDA] = getUserCounterPDA(publicKey);
       const [globalStatePDA] = PublicKey.findProgramAddressSync([Buffer.from('global_state')], PROGRAM_ID);
       const [mintAuthorityPDA] = PublicKey.findProgramAddressSync([Buffer.from('mint_authority')], PROGRAM_ID);
-      const discriminator = await getDiscriminator('global:claim_mint_reward');
 
       // Create ATA if needed
       const ataInfo = await conn.getAccountInfo(userTokenAccount);
@@ -298,7 +293,7 @@ export const ClaimRewards: FC = () => {
           for (const mint of batch) {
             const [userMintPDA] = getUserMintPDA(publicKey, mint.slotId);
             const slotBuf = encodeU32LE(mint.slotId);
-            const ixData = Buffer.from(new Uint8Array([...discriminator, ...slotBuf]));
+            const ixData = Buffer.from(new Uint8Array([...CLAIM_MINT_REWARD_DISCRIMINATOR, ...slotBuf]));
             tx.add(new TransactionInstruction({
               programId: PROGRAM_ID,
               keys: [
