@@ -423,6 +423,9 @@ export const ClaimRewards: FC = () => {
         const sig = await sendTransaction(tx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
         await conn.confirmTransaction(sig, 'confirmed');
         sigs.push(sig);
+        // Optimistically remove claimed slots so they don't reappear on the next loadData
+        const claimedIds = new Set(batch.map(m => m.slotId));
+        setMints(prev => prev.filter(m => !claimedIds.has(m.slotId)));
       } catch (batchErr) {
         // If user denied the wallet popup, stop immediately
         if (isUserDenial(batchErr)) {
@@ -592,7 +595,7 @@ export const ClaimRewards: FC = () => {
                 <span className="animate-spin inline-block w-4 h-4 border-2 border-black border-t-transparent rounded-full"></span>
                 Claiming...
               </span>
-            ) : `🎯 Batch Claim (next 5)`}
+            ) : `🎯 Batch Claim`}
           </button>
 
           {/* Auto-repeat toggle */}
