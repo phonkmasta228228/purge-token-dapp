@@ -375,7 +375,7 @@ export const ClaimRewards: FC = () => {
       const ataInfo = await conn.getAccountInfo(userTokenAccount);
       const needsAta = !ataInfo;
 
-      const BATCH_SIZE = 16;
+      const BATCH_SIZE = 5;
       const batches: UserMintData[][] = [];
       for (let i = 0; i < matureMints.length; i += BATCH_SIZE) {
         batches.push(matureMints.slice(i, i + BATCH_SIZE));
