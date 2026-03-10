@@ -66,10 +66,10 @@ function parseUserMint(data: Buffer, slotId: number): UserMintData {
   // UserMint layout: 8 disc | 32 owner | 4 slot_index (u32) | 8 term_days (u64) |
   //                  8 mature_ts (i64) | 8 rank (u64) | 8 amp (u64) | 8 reward (u64) | 1 claimed | 1 bump
   //
-  // IMPORTANT: The program uses the reward field as the claimed marker.
-  // reward == 0  → not yet claimed (reward is computed at claim time, not stored upfront)
-  // reward > 0   → already claimed (the program writes the minted amount here after a successful claim)
-  // The `claimed` byte at offset 84 is never set by the program and should be ignored.
+  // Two generations of the program exist on-chain:
+  //   Old program: sets reward field to the minted amount after claiming (claimed byte stays 0)
+  //   New program: sets claimed byte to 1 after claiming (reward field stays 0)
+  // A slot is claimed if EITHER condition is true.
   let offset = 8;
   const owner = new PublicKey(data.slice(offset, offset + 32)).toBase58(); offset += 32;
   const parsedSlotId = data.readUInt32LE(offset); offset += 4;
@@ -78,8 +78,9 @@ function parseUserMint(data: Buffer, slotId: number): UserMintData {
   const cRank = data.readBigUInt64LE(offset); offset += 8;
   const amp = data.readBigUInt64LE(offset); offset += 8;
   const reward = data.readBigUInt64LE(offset); offset += 8;
-  // reward > 0 means already claimed; reward == 0 means pending
-  const active = reward === 0n;
+  const claimedByte = data[offset] !== 0; // new program sets this to 1
+  const claimedByReward = reward > 0n;    // old program wrote minted amount here instead
+  const active = !claimedByte && !claimedByReward;
   return { slotId: parsedSlotId, owner, cRank, amp, reward, termDays, maturityTs, active };
 }
 
