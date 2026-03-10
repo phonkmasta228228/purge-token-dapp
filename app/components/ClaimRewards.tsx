@@ -121,8 +121,9 @@ function parseUserMint(data: Buffer, slotId: number): UserMintData {
   const cRank = data.readBigUInt64LE(offset); offset += 8;
   const amp = data.readBigUInt64LE(offset); offset += 8;
   const reward = data.readBigUInt64LE(offset); offset += 8;
-  const claimedByte = data[offset] !== 0; // 1 = claimed; reward field is pre-populated so cannot be used
-  const active = !claimedByte;
+  const claimedByte = data[offset] !== 0; // new program sets this to 1
+  const claimedByReward = reward > 0n;    // old program wrote minted amount here instead
+  const active = !claimedByte && !claimedByReward;
   return { slotId: parsedSlotId, owner, cRank, amp, reward, termDays, maturityTs, active };
 }
 
@@ -252,6 +253,27 @@ export const ClaimRewards: FC = () => {
     }
     loadData(publicKey);
   }, [publicKey, loadData]);
+
+  // Auto-repeat: after each batch finishes (claimingAll goes false), fire the next one
+  // if auto-repeat is still enabled and there are more mature mints waiting.
+  const autoRepeatRef = React.useRef(autoRepeat);
+  useEffect(() => { autoRepeatRef.current = autoRepeat; }, [autoRepeat]);
+
+  useEffect(() => {
+    if (claimingAll) return; // batch in progress — wait
+    if (!autoRepeatRef.current) return; // auto-repeat is off
+    if (!publicKey) return;
+    const matureMints = mints.filter(m => BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs);
+    if (matureMints.length === 0) {
+      setAutoRepeat(false); // nothing left — turn it off automatically
+      return;
+    }
+    // Small delay so wallet popup doesn't appear too aggressively
+    const timer = setTimeout(() => {
+      if (autoRepeatRef.current) handleClaimAll();
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [claimingAll, mints, publicKey, handleClaimAll]);
 
   const handleClaimReward = useCallback(async (mint: UserMintData) => {
     if (!publicKey || !sendTransaction) return;
@@ -423,9 +445,6 @@ export const ClaimRewards: FC = () => {
         const sig = await sendTransaction(tx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
         await conn.confirmTransaction(sig, 'confirmed');
         sigs.push(sig);
-        // Optimistically remove claimed slots so they don't reappear on the next loadData
-        const claimedIds = new Set(batch.map(m => m.slotId));
-        setMints(prev => prev.filter(m => !claimedIds.has(m.slotId)));
       } catch (batchErr) {
         // If user denied the wallet popup, stop immediately
         if (isUserDenial(batchErr)) {
@@ -475,7 +494,7 @@ export const ClaimRewards: FC = () => {
 
   const handleClaimAll = useCallback(async () => {
     if (!publicKey || !sendTransaction) return;
-    const SINGLE_BATCH_LIMIT = 5;
+    const SINGLE_BATCH_LIMIT = 16;
 
     setClaimingAll(true);
     setClaimAllResults(null);
@@ -488,10 +507,8 @@ export const ClaimRewards: FC = () => {
       allSigs = sigs;
       allFailed = failed;
 
-      // If user denied, kill auto-repeat immediately — set the ref synchronously
-      // so any already-scheduled setTimeout callback sees it before state update lands
+      // If user denied, kill auto-repeat immediately
       if (denied) {
-        autoRepeatRef.current = false;
         setAutoRepeat(false);
         setClaimAllResults({ sigs: allSigs, failed: allFailed });
         await loadData(publicKey);
@@ -504,34 +521,6 @@ export const ClaimRewards: FC = () => {
       setClaimingAll(false);
     }
   }, [publicKey, sendTransaction, mints, loadData, claimOneBatch]);
-
-  // Auto-repeat: after each batch finishes (claimingAll goes false), fire the next one
-  // if auto-repeat is still enabled and there are more mature mints waiting.
-  // autoRepeatRef is the single source of truth for auto-repeat logic.
-  // It is set synchronously by: checkbox onChange, and denial in handleClaimAll.
-  // Never sync it from the autoRepeat state — that lags behind by one render.
-  const autoRepeatRef = React.useRef(false);
-
-  // Keep a stable ref to handleClaimAll so the effect never needs it as a dep
-  const handleClaimAllRef = React.useRef(handleClaimAll);
-  useEffect(() => { handleClaimAllRef.current = handleClaimAll; }, [handleClaimAll]);
-
-  // Only re-arm on claimingAll true → false transition
-  const prevClaimingAllRef = React.useRef(false);
-  useEffect(() => {
-    const wasRunning = prevClaimingAllRef.current;
-    prevClaimingAllRef.current = claimingAll;
-
-    if (!wasRunning || claimingAll) return;   // only on true→false
-    if (!autoRepeatRef.current) return;        // auto-repeat was killed
-    if (!publicKey) return;
-
-    const timer = setTimeout(() => {
-      if (autoRepeatRef.current) handleClaimAllRef.current();
-    }, 1000);
-    return () => clearTimeout(timer);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [claimingAll, publicKey]); // intentionally exclude handleClaimAll — using ref
 
   if (!connected) {
     return (
@@ -595,7 +584,7 @@ export const ClaimRewards: FC = () => {
                 <span className="animate-spin inline-block w-4 h-4 border-2 border-black border-t-transparent rounded-full"></span>
                 Claiming...
               </span>
-            ) : `🎯 Batch Claim (next 5)`}
+            ) : `🎯 Batch Claim (next 16)`}
           </button>
 
           {/* Auto-repeat toggle */}
@@ -603,7 +592,7 @@ export const ClaimRewards: FC = () => {
             <input
               type="checkbox"
               checked={autoRepeat}
-              onChange={e => { autoRepeatRef.current = e.target.checked; setAutoRepeat(e.target.checked); }}
+              onChange={e => setAutoRepeat(e.target.checked)}
               disabled={claimingAll || claiming !== null}
               className="w-4 h-4 accent-[#00FFAA] cursor-pointer"
             />
