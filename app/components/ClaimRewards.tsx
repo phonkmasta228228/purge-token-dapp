@@ -254,26 +254,8 @@ export const ClaimRewards: FC = () => {
     loadData(publicKey);
   }, [publicKey, loadData]);
 
-  // Auto-repeat: after each batch finishes (claimingAll goes false), fire the next one
-  // if auto-repeat is still enabled and there are more mature mints waiting.
   const autoRepeatRef = React.useRef(autoRepeat);
   useEffect(() => { autoRepeatRef.current = autoRepeat; }, [autoRepeat]);
-
-  useEffect(() => {
-    if (claimingAll) return; // batch in progress — wait
-    if (!autoRepeatRef.current) return; // auto-repeat is off
-    if (!publicKey) return;
-    const matureMints = mints.filter(m => BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs);
-    if (matureMints.length === 0) {
-      setAutoRepeat(false); // nothing left — turn it off automatically
-      return;
-    }
-    // Small delay so wallet popup doesn't appear too aggressively
-    const timer = setTimeout(() => {
-      if (autoRepeatRef.current) handleClaimAll();
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [claimingAll, mints, publicKey, handleClaimAll]);
 
   const handleClaimReward = useCallback(async (mint: UserMintData) => {
     if (!publicKey || !sendTransaction) return;
@@ -521,6 +503,24 @@ export const ClaimRewards: FC = () => {
       setClaimingAll(false);
     }
   }, [publicKey, sendTransaction, mints, loadData, claimOneBatch]);
+
+  // Auto-repeat: after each batch finishes (claimingAll goes false), fire the next one
+  // if auto-repeat is still enabled and there are more mature mints waiting.
+  useEffect(() => {
+    if (claimingAll) return; // batch in progress — wait
+    if (!autoRepeatRef.current) return; // auto-repeat is off
+    if (!publicKey) return;
+    const matureMints = mints.filter(m => BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs);
+    if (matureMints.length === 0) {
+      setAutoRepeat(false); // nothing left — turn it off automatically
+      return;
+    }
+    // Small delay so wallet popup doesn't appear too aggressively
+    const timer = setTimeout(() => {
+      if (autoRepeatRef.current) handleClaimAll();
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [claimingAll, mints, publicKey, handleClaimAll]);
 
   if (!connected) {
     return (
