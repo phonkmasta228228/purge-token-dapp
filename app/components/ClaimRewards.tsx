@@ -508,23 +508,26 @@ export const ClaimRewards: FC = () => {
   const autoRepeatRef = React.useRef(autoRepeat);
   useEffect(() => { autoRepeatRef.current = autoRepeat; }, [autoRepeat]);
 
-  // Only re-arm when claimingAll transitions from true → false
+  // Keep a stable ref to handleClaimAll so the effect never needs it as a dep
+  const handleClaimAllRef = React.useRef(handleClaimAll);
+  useEffect(() => { handleClaimAllRef.current = handleClaimAll; }, [handleClaimAll]);
+
+  // Only re-arm on claimingAll true → false transition
   const prevClaimingAllRef = React.useRef(false);
   useEffect(() => {
     const wasRunning = prevClaimingAllRef.current;
     prevClaimingAllRef.current = claimingAll;
 
-    // Only fire when a batch just finished (true → false transition)
-    if (!wasRunning || claimingAll) return;
-    if (!autoRepeatRef.current) return;
+    if (!wasRunning || claimingAll) return;   // only on true→false
+    if (!autoRepeatRef.current) return;        // auto-repeat was killed
     if (!publicKey) return;
 
     const timer = setTimeout(() => {
-      // Re-check the ref at call time — denial may have cleared it in the interim
-      if (autoRepeatRef.current) handleClaimAll();
+      if (autoRepeatRef.current) handleClaimAllRef.current();
     }, 1000);
     return () => clearTimeout(timer);
-  }, [claimingAll, publicKey, handleClaimAll]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [claimingAll, publicKey]); // intentionally exclude handleClaimAll — using ref
 
   if (!connected) {
     return (
