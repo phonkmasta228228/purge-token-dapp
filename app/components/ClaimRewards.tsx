@@ -119,6 +119,17 @@ function encodeU32LE(val: number): Uint8Array {
   return buf;
 }
 
+function getLocalClaimedKey(wallet: string) { return `purge_claimed_${wallet}`; }
+function getLocalClaimed(wallet: string): Set<number> {
+  try { return new Set(JSON.parse(localStorage.getItem(getLocalClaimedKey(wallet)) || '[]')); } catch { return new Set(); }
+}
+function addLocalClaimed(wallet: string, slotId: number) {
+  try {
+    const s = getLocalClaimed(wallet); s.add(slotId);
+    localStorage.setItem(getLocalClaimedKey(wallet), JSON.stringify([...s]));
+  } catch {}
+}
+
 export const ClaimRewards: FC = () => {
   const { connected, publicKey, sendTransaction } = useWallet();
   const [counter, setCounter] = useState<CounterData | null>(null);
@@ -163,10 +174,14 @@ export const ClaimRewards: FC = () => {
         })
       );
 
+      // Also filter slots the user has already claimed locally (program bug: claimed flag not set on-chain)
+      const localClaimed = getLocalClaimed(pubkey.toBase58());
       const activeMints: UserMintData[] = [];
       for (const result of results) {
         if (result.status === 'fulfilled' && result.value && result.value.active) {
-          activeMints.push(result.value);
+          if (!localClaimed.has(result.value.slotId)) {
+            activeMints.push(result.value);
+          }
         }
       }
 
@@ -260,7 +275,8 @@ export const ClaimRewards: FC = () => {
 
       const sig = await sendTransaction(tx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
       await conn.confirmTransaction(sig, 'confirmed');
-      // Remove claimed slot from list immediately
+      // Remove claimed slot from list immediately + persist locally (program bug: claimed flag not set on-chain)
+      addLocalClaimed(publicKey.toBase58(), slotId);
       setMints(prev => prev.filter(m => m.slotId !== slotId));
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -406,6 +422,9 @@ export const ClaimRewards: FC = () => {
         }
       }
 
+      // Persist all successfully claimed slots locally (program bug: claimed flag not set on-chain)
+      const succeededSlotIds = matureMints.filter(m => !failed.includes(m.slotId)).map(m => m.slotId);
+      succeededSlotIds.forEach(id => addLocalClaimed(publicKey.toBase58(), id));
       setClaimAllResults({ sigs, failed });
       await loadData(publicKey);
     } finally {
