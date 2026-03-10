@@ -9,6 +9,49 @@ const PROGRAM_ID = new PublicKey('6K6md8GFmT8fncNbWqHSJrduYfG6HgnFCp34jdouGVSM')
 const PURGE_MINT = new PublicKey('6To4f6r9X3WFsLwWLFdj7ju8BNquzZwupVHUc8oS5pgP');
 const X1_RPC = 'https://rpc.mainnet.x1.xyz';
 
+// 38 PDAs from the old program that have reward>0 (claimed) but claimed byte=0.
+// These are permanently claimed and must never appear as claimable in the UI.
+const LEGACY_CLAIMED_PDAS = new Set([
+  "5JuLXqMM248aJv4Mxqtg2Pnpp48tRvbSz5Hy9qvrZ2YW",
+  "H9ZFH7vpYfJ2BHj7cECFV2oi6kveBLZYMkbGoaA4pe3a",
+  "HrxNHjCgJsTmYL4cfpKXYUjiqPCcPrTwesidVUPcRzh9",
+  "6iz4h72LWyPPJpvV1iiT9nUdP624kab9wf4eyXcCzxFa",
+  "6i9TM4AhA9HdVBW843FJ9pAQKG6yKBrLP1u3Fg9dwUCc",
+  "2KEx8nL3NaDUBmp8NyHwX42bDWqoQbbmHhchc5cH1dt6",
+  "8FJ2y1Cei1WNiVfU9dAjrExBR44rMpHc42nNqVeizGED",
+  "FSjueC1mYyGqX1rGMybSGsEZDEgx1CNB1exvb3tncac6",
+  "GZTCUJPGWChmRG7ZHEGXk4rYMiqGxnvHiZzgGsxUreQE",
+  "QU9tGW2968zZW54oZt3KDJGf4vtjKhNQjJzS2EnkLc9",
+  "EDmagKkZZmdBAKdkGwNe4TjLw72HCHQ4KtruXCGjBeMA",
+  "8aqdr9RXGZV2cggr4eajZHtATdQC3S4cPCKcq6LfXVJT",
+  "2SG9qD8KCH6JBzTaMjpofABiUjafepKqZx3PKUypZKin",
+  "7QJBMMiWcQ8yUbV7wWR9MT2TC5qoeLabFcRAR6vUnoyk",
+  "3GhHydmM8LH3N1G31GZLaArSrbUFsSHToLcYogRPaQC7",
+  "Bc1SeomSSZpVVTnV3SAv7TL4MPUtgbckyxFSM5zRZuJg",
+  "BWVNUUoCDX7d6DRW4BPKtY16URrXA37o4WBCxcVedxS9",
+  "Gt74RN7PLSSPZQBjRv4aC9LqT6YeQHkMPBryn2RLGJ8r",
+  "42Qvd4Yy74oqZzEyR89q9qx8rFPQYTTaQT97aoRvnnqi",
+  "4DNrfi7E1h2xQeqHM3HhYPCxQASrJc3aSoxQfTpFCVyx",
+  "5Pi9iSEDJNABoaymv9rw83NPk5uJBahwvxpvFwXAEM5S",
+  "8ZLoPux84BVsQQVWmDecMEHQEYZPehVYRB94cbwPVxfD",
+  "C9UWmYh8XmRRCpHxN1Gnauvke3KvbMH2ZAo6GHotQfN",
+  "J3wTxNk3FeiDDKH1hntYHD4hqdST9oT7euLznQ9APTto",
+  "BBgXCSrykqj4YN5MmK8dbBrTS1tFFUsFA5qgd5CJyN22",
+  "4dVqFg6JDEC7bA7x9kVDQy8zNdUp4ooRcPyFWKLX1d7q",
+  "G59VoD4wQPJyPQJGq89HGMn1thjS9qW9hgt3R16pUWMT",
+  "B6BbQkyXiBYQDa3dFsiSRy2Ndi5L1bkPus6AKUvH1D1Y",
+  "CR4nRWFegG9KiPkW64rNnLfkE7hLUbbqJtnoKADWenN8",
+  "5LQH7FzewUaPs3ThbQDXSnPYmTXKT4oLWF2CxQT2eMG6",
+  "B2zz2LNrd8TxRviTWyV7B2Fe3h5VNPw8bSQKCEGV2FBE",
+  "4RcNgyaAfdWT9BrzwYmMMmfjsC6nC4GtkN92mxK52JpT",
+  "DFkuZxjZ1AU1UzeTSPDkFatvwyTyXhVotpDWyG55UpgL",
+  "5aG2xfh6nr8UEkMniDqu6GwwSH2oU3tSpmtgizd35mqw",
+  "k4ErQufResXFbxbZPxQjWFjy1exioG6Ttva18ERfeYf",
+  "CckUn98bkmqDZgBPhnq8FQ1i1ozYtxJk6mVjvr2WTLhk",
+  "XZGm33fide4ghCAGdWTkZD6usq1eEHQ1VUp3qeiUSs6",
+  "14LJ5rfaTj6e46Uo6dSZCTvhcGNqGhsm3cCXGhyczTMv",
+]);
+
 interface UserMintData {
   slotId: number;
   owner: string;
@@ -175,6 +218,7 @@ export const ClaimRewards: FC = () => {
           for (let j = 0; j < infos.length; j++) {
             const info = infos[j];
             if (!info || info.data.length < 86) continue;
+            if (LEGACY_CLAIMED_PDAS.has(batchPdas[j].toBase58())) continue;
             const mint = parseUserMint(info.data as Buffer, batchSlots[j]);
             if (mint.active) activeMints.push(mint);
           }
