@@ -484,33 +484,29 @@ export const ClaimRewards: FC = () => {
     try {
       const { sigs, failed, denied, claimedSlotIds } = await claimOneBatch(SINGLE_BATCH_LIMIT);
 
-      // Optimistically remove claimed slots from local state — no chain reload needed
-      // between auto-repeat batches. Full reload happens only when we're truly done.
-      if (claimedSlotIds.length > 0) {
-        const claimedSet = new Set(claimedSlotIds);
-        setMints(prev => prev.filter(m => !claimedSet.has(m.slotId)));
-        setCounter(prev => prev ? { ...prev, activeCount: Math.max(0, prev.activeCount - claimedSlotIds.length) } : prev);
-      }
-
       if (denied) {
-        // Kill auto-repeat synchronously
         autoRepeatRef.current = false;
         setAutoRepeat(false);
         setClaimAllResults({ sigs, failed });
-        // Do a full reload now that we're stopped
+        // Full reload on stop so UI reflects true chain state
         await loadData(publicKey);
         return;
       }
 
       setClaimAllResults({ sigs, failed });
 
-      // Check if there are still mature mints left (using updated local state)
-      // If not, do a final reload to sync chain state
-      const stillMature = mints.filter(m =>
-        !new Set(claimedSlotIds).has(m.slotId) &&
-        BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs
-      );
-      if (stillMature.length === 0 || !autoRepeatRef.current) {
+      // If nothing was claimed (no mature mints left), stop auto-repeat and do final reload
+      if (claimedSlotIds.length === 0) {
+        autoRepeatRef.current = false;
+        setAutoRepeat(false);
+        await loadData(publicKey);
+        return;
+      }
+
+      // During auto-repeat: skip the chain reload so the UI stays responsive.
+      // claimOneBatch re-verifies on-chain before each batch so stale slots get
+      // filtered out naturally. Only do a full reload when auto-repeat is off.
+      if (!autoRepeatRef.current) {
         await loadData(publicKey);
       }
     } finally {
