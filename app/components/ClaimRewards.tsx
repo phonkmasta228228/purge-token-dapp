@@ -1,6 +1,6 @@
 'use client';
 
-import React, { FC, useState, useEffect, useCallback } from 'react';
+import { FC, useState, useEffect, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, Connection, Transaction, TransactionInstruction, SystemProgram } from '@solana/web3.js';
@@ -177,7 +177,6 @@ export const ClaimRewards: FC = () => {
   const [loading, setLoading] = useState(false);
   const [claiming, setClaiming] = useState<number | null>(null); // slot being claimed
   const [claimingAll, setClaimingAll] = useState(false);
-  const [autoRepeat, setAutoRepeat] = useState(false);
   const [claimAllResults, setClaimAllResults] = useState<{ sigs: string[]; failed: number[] } | null>(null);
   const [txSigs, setTxSigs] = useState<Record<number, string>>({});
   const [errors, setErrors] = useState<Record<number, string>>({});
@@ -253,9 +252,6 @@ export const ClaimRewards: FC = () => {
     }
     loadData(publicKey);
   }, [publicKey, loadData]);
-
-  const autoRepeatRef = React.useRef(autoRepeat);
-  useEffect(() => { autoRepeatRef.current = autoRepeat; }, [autoRepeat]);
 
   const handleClaimReward = useCallback(async (mint: UserMintData) => {
     if (!publicKey || !sendTransaction) return;
@@ -336,113 +332,79 @@ export const ClaimRewards: FC = () => {
     }
   }, [publicKey, sendTransaction, loadData]);
 
-  // isUserDenial detects wallet rejection vs on-chain errors
-  const isUserDenial = (e: unknown): boolean => {
-    const msg = (e instanceof Error ? e.message : String(e)).toLowerCase();
-    return msg.includes('user rejected') || msg.includes('user denied') || msg.includes('rejected the request');
-  };
+  const handleClaimAll = useCallback(async () => {
+    if (!publicKey || !sendTransaction) return;
+    const candidateMints = mints.filter(m => BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs);
+    if (candidateMints.length === 0) return;
 
-  // claimOneBatch claims up to `limit` mature mints in one button press.
-  // Returns { sigs, failed, denied } where denied=true means user rejected a tx.
-  const claimOneBatch = useCallback(async (limit: number): Promise<{ sigs: string[]; failed: number[]; denied: boolean }> => {
-    if (!publicKey || !sendTransaction) return { sigs: [], failed: [], denied: false };
-    const candidateMints = mints
-      .filter(m => BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs)
-      .slice(0, limit);
-    if (candidateMints.length === 0) return { sigs: [], failed: [], denied: false };
+    setClaimingAll(true);
+    setClaimAllResults(null);
 
-    const conn = new Connection(X1_RPC, 'confirmed');
-    const { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
-    const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
-    const userTokenAccount = await getAssociatedTokenAddress(PURGE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-    const [counterPDA] = getUserCounterPDA(publicKey);
-    const [globalStatePDA] = PublicKey.findProgramAddressSync([Buffer.from('global_state')], PROGRAM_ID);
-    const [mintAuthorityPDA] = PublicKey.findProgramAddressSync([Buffer.from('mint_authority')], PROGRAM_ID);
+    try {
+      const conn = new Connection(X1_RPC, 'confirmed');
+      const { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
+      // Program was compiled with non-standard ASSOCIATED_TOKEN_PROGRAM_ID — must match exactly
+      const ASSOCIATED_TOKEN_PROGRAM_ID = new PublicKey('ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL');
+      const userTokenAccount = await getAssociatedTokenAddress(PURGE_MINT, publicKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+      const [counterPDA] = getUserCounterPDA(publicKey);
+      const [globalStatePDA] = PublicKey.findProgramAddressSync([Buffer.from('global_state')], PROGRAM_ID);
+      const [mintAuthorityPDA] = PublicKey.findProgramAddressSync([Buffer.from('mint_authority')], PROGRAM_ID);
 
-    // Re-verify on-chain claimed status before batching
-    const verifiedResults = await Promise.allSettled(
-      candidateMints.map(async (mint) => {
-        const [mintPDA] = getUserMintPDA(publicKey, mint.slotId);
-        const info = await conn.getAccountInfo(mintPDA);
-        if (!info || info.data.length < 86) return null;
-        const parsed = parseUserMint(info.data as Buffer, mint.slotId);
-        return parsed.active ? mint : null;
-      })
-    );
-    const matureMints = verifiedResults
-      .filter((r): r is PromiseFulfilledResult<UserMintData | null> => r.status === 'fulfilled' && r.value !== null)
-      .map(r => r.value as UserMintData);
+      // Re-verify on-chain claimed status for every candidate slot before batching.
+      // This prevents already-claimed slots (e.g. from the old mint) from poisoning
+      // a batch that also contains valid unclaimed slots.
+      const verifiedResults = await Promise.allSettled(
+        candidateMints.map(async (mint) => {
+          const [mintPDA] = getUserMintPDA(publicKey, mint.slotId);
+          const info = await conn.getAccountInfo(mintPDA);
+          if (!info || info.data.length < 86) return null;
+          const parsed = parseUserMint(info.data as Buffer, mint.slotId);
+          return parsed.active ? mint : null;
+        })
+      );
+      const matureMints = verifiedResults
+        .filter((r): r is PromiseFulfilledResult<UserMintData | null> => r.status === 'fulfilled' && r.value !== null)
+        .map(r => r.value as UserMintData);
 
-    if (matureMints.length === 0) return { sigs: [], failed: [], denied: false };
+      if (matureMints.length === 0) {
+        setClaimAllResults({ sigs: [], failed: [] });
+        return;
+      }
 
-    const ataInfo = await conn.getAccountInfo(userTokenAccount);
-    const needsAta = !ataInfo;
+      // Create ATA if needed
+      const ataInfo = await conn.getAccountInfo(userTokenAccount);
+      const needsAta = !ataInfo;
 
-    const BATCH_SIZE = 5;
-    const batches: UserMintData[][] = [];
-    for (let i = 0; i < matureMints.length; i += BATCH_SIZE) {
-      batches.push(matureMints.slice(i, i + BATCH_SIZE));
-    }
+      const BATCH_SIZE = 16;
+      const batches: UserMintData[][] = [];
+      for (let i = 0; i < matureMints.length; i += BATCH_SIZE) {
+        batches.push(matureMints.slice(i, i + BATCH_SIZE));
+      }
 
-    const sigs: string[] = [];
-    const failed: number[] = [];
+      const sigs: string[] = [];
+      const failed: number[] = [];
 
-    for (let bi = 0; bi < batches.length; bi++) {
-      const batch = batches[bi];
-      try {
-        const { blockhash } = await conn.getLatestBlockhash('confirmed');
-        const tx = new Transaction();
-        tx.recentBlockhash = blockhash;
-        tx.feePayer = publicKey;
+      for (let bi = 0; bi < batches.length; bi++) {
+        const batch = batches[bi];
+        try {
+          const { blockhash } = await conn.getLatestBlockhash('confirmed');
+          const tx = new Transaction();
+          tx.recentBlockhash = blockhash;
+          tx.feePayer = publicKey;
 
-        if (bi === 0 && needsAta) {
-          tx.add(createAssociatedTokenAccountInstruction(
-            publicKey, userTokenAccount, publicKey, PURGE_MINT,
-            TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
-          ));
-        }
+          // Only add ATA ix on first batch
+          if (bi === 0 && needsAta) {
+            tx.add(createAssociatedTokenAccountInstruction(
+              publicKey, userTokenAccount, publicKey, PURGE_MINT,
+              TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID
+            ));
+          }
 
-        for (const mint of batch) {
-          const [userMintPDA] = getUserMintPDA(publicKey, mint.slotId);
-          const slotBuf = encodeU32LE(mint.slotId);
-          const ixData = Buffer.from(new Uint8Array([...CLAIM_MINT_REWARD_DISCRIMINATOR, ...slotBuf]));
-          tx.add(new TransactionInstruction({
-            programId: PROGRAM_ID,
-            keys: [
-              { pubkey: counterPDA,                  isSigner: false, isWritable: true  },
-              { pubkey: userMintPDA,                 isSigner: false, isWritable: true  },
-              { pubkey: globalStatePDA,              isSigner: false, isWritable: true  },
-              { pubkey: PURGE_MINT,                  isSigner: false, isWritable: true  },
-              { pubkey: mintAuthorityPDA,            isSigner: false, isWritable: false },
-              { pubkey: userTokenAccount,            isSigner: false, isWritable: true  },
-              { pubkey: publicKey,                   isSigner: true,  isWritable: true  },
-              { pubkey: SystemProgram.programId,     isSigner: false, isWritable: false },
-              { pubkey: TOKEN_PROGRAM_ID,            isSigner: false, isWritable: false },
-              { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
-            ],
-            data: ixData,
-          }));
-        }
-
-        const sig = await sendTransaction(tx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
-        await conn.confirmTransaction(sig, 'confirmed');
-        sigs.push(sig);
-      } catch (batchErr) {
-        // If user denied the wallet popup, stop immediately
-        if (isUserDenial(batchErr)) {
-          return { sigs, failed, denied: true };
-        }
-        // Batch failed for on-chain reason — retry each slot individually
-        for (const mint of batch) {
-          try {
-            const { blockhash: bh } = await conn.getLatestBlockhash('confirmed');
-            const soloTx = new Transaction();
-            soloTx.recentBlockhash = bh;
-            soloTx.feePayer = publicKey;
+          for (const mint of batch) {
             const [userMintPDA] = getUserMintPDA(publicKey, mint.slotId);
             const slotBuf = encodeU32LE(mint.slotId);
             const ixData = Buffer.from(new Uint8Array([...CLAIM_MINT_REWARD_DISCRIMINATOR, ...slotBuf]));
-            soloTx.add(new TransactionInstruction({
+            tx.add(new TransactionInstruction({
               programId: PROGRAM_ID,
               keys: [
                 { pubkey: counterPDA,                  isSigner: false, isWritable: true  },
@@ -458,69 +420,54 @@ export const ClaimRewards: FC = () => {
               ],
               data: ixData,
             }));
-            const soloSig = await sendTransaction(soloTx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
-            await conn.confirmTransaction(soloSig, 'confirmed');
-            sigs.push(soloSig);
-          } catch (soloErr) {
-            if (isUserDenial(soloErr)) {
-              return { sigs, failed, denied: true };
+          }
+
+          const sig = await sendTransaction(tx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
+          await conn.confirmTransaction(sig, 'confirmed');
+          sigs.push(sig);
+        } catch {
+          // Batch failed — retry each slot individually so one bad slot can't block the rest
+          for (const mint of batch) {
+            try {
+              const { blockhash: bh } = await conn.getLatestBlockhash('confirmed');
+              const soloTx = new Transaction();
+              soloTx.recentBlockhash = bh;
+              soloTx.feePayer = publicKey;
+              const [userMintPDA] = getUserMintPDA(publicKey, mint.slotId);
+              const slotBuf = encodeU32LE(mint.slotId);
+              const ixData = Buffer.from(new Uint8Array([...CLAIM_MINT_REWARD_DISCRIMINATOR, ...slotBuf]));
+              soloTx.add(new TransactionInstruction({
+                programId: PROGRAM_ID,
+                keys: [
+                  { pubkey: counterPDA,                  isSigner: false, isWritable: true  },
+                  { pubkey: userMintPDA,                 isSigner: false, isWritable: true  },
+                  { pubkey: globalStatePDA,              isSigner: false, isWritable: true  },
+                  { pubkey: PURGE_MINT,                  isSigner: false, isWritable: true  },
+                  { pubkey: mintAuthorityPDA,            isSigner: false, isWritable: false },
+                  { pubkey: userTokenAccount,            isSigner: false, isWritable: true  },
+                  { pubkey: publicKey,                   isSigner: true,  isWritable: true  },
+                  { pubkey: SystemProgram.programId,     isSigner: false, isWritable: false },
+                  { pubkey: TOKEN_PROGRAM_ID,            isSigner: false, isWritable: false },
+                  { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+                ],
+                data: ixData,
+              }));
+              const soloSig = await sendTransaction(soloTx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
+              await conn.confirmTransaction(soloSig, 'confirmed');
+              sigs.push(soloSig);
+            } catch {
+              failed.push(mint.slotId);
             }
-            failed.push(mint.slotId);
           }
         }
       }
-    }
 
-    return { sigs, failed, denied: false };
-  }, [publicKey, sendTransaction, mints]);
-
-  const handleClaimAll = useCallback(async () => {
-    if (!publicKey || !sendTransaction) return;
-    const SINGLE_BATCH_LIMIT = 5;
-
-    setClaimingAll(true);
-    setClaimAllResults(null);
-
-    try {
-      let allSigs: string[] = [];
-      let allFailed: number[] = [];
-
-      const { sigs, failed, denied } = await claimOneBatch(SINGLE_BATCH_LIMIT);
-      allSigs = sigs;
-      allFailed = failed;
-
-      // If user denied, kill auto-repeat immediately
-      if (denied) {
-        setAutoRepeat(false);
-        setClaimAllResults({ sigs: allSigs, failed: allFailed });
-        await loadData(publicKey);
-        return;
-      }
-
+      setClaimAllResults({ sigs, failed });
       await loadData(publicKey);
-      setClaimAllResults({ sigs: allSigs, failed: allFailed });
     } finally {
       setClaimingAll(false);
     }
-  }, [publicKey, sendTransaction, mints, loadData, claimOneBatch]);
-
-  // Auto-repeat: after each batch finishes (claimingAll goes false), fire the next one
-  // if auto-repeat is still enabled and there are more mature mints waiting.
-  useEffect(() => {
-    if (claimingAll) return; // batch in progress — wait
-    if (!autoRepeatRef.current) return; // auto-repeat is off
-    if (!publicKey) return;
-    const matureMints = mints.filter(m => BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs);
-    if (matureMints.length === 0) {
-      setAutoRepeat(false); // nothing left — turn it off automatically
-      return;
-    }
-    // Small delay so wallet popup doesn't appear too aggressively
-    const timer = setTimeout(() => {
-      if (autoRepeatRef.current) handleClaimAll();
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, [claimingAll, mints, publicKey, handleClaimAll]);
+  }, [publicKey, sendTransaction, mints, loadData]);
 
   if (!connected) {
     return (
@@ -553,7 +500,7 @@ export const ClaimRewards: FC = () => {
             <div className="text-xs text-[#555] uppercase tracking-widest mb-1">Future Claims</div>
             <div className="text-xl font-black text-white">
               {formatPurge(mints
-                .filter(m => m.active && BigInt(Math.floor(Date.now() / 1000)) < m.maturityTs)
+                .filter(m => !m.claimed && BigInt(Math.floor(Date.now() / 1000)) < m.maturityTs)
                 .reduce((sum, m) => sum + (estimateRewardDisplay(m)), 0))}
             </div>
             <div className="text-xs text-[#444] mt-1">PURGE pending</div>
@@ -562,7 +509,7 @@ export const ClaimRewards: FC = () => {
             <div className="text-xs text-[#555] uppercase tracking-widest mb-1">Matured</div>
             <div className="text-xl font-black text-[#00FFAA]">
               {formatPurge(mints
-                .filter(m => m.active && BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs)
+                .filter(m => !m.claimed && BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs)
                 .reduce((sum, m) => sum + (estimateRewardDisplay(m)), 0))}
             </div>
             <div className="text-xs text-[#444] mt-1">PURGE ready</div>
@@ -570,9 +517,9 @@ export const ClaimRewards: FC = () => {
         </div>
       )}
 
-      {/* Batch Claim button — only shown when mature mints exist */}
+      {/* Claim All button — only shown when mature mints exist */}
       {!loading && mints.filter(m => BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs).length > 1 && (
-        <div className="mb-6 space-y-3">
+        <div className="mb-6">
           <button
             onClick={handleClaimAll}
             disabled={claimingAll || claiming !== null}
@@ -582,27 +529,13 @@ export const ClaimRewards: FC = () => {
             {claimingAll ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="animate-spin inline-block w-4 h-4 border-2 border-black border-t-transparent rounded-full"></span>
-                Claiming...
+                Claiming All...
               </span>
-            ) : `🎯 Batch Claim (next 16)`}
+            ) : `🎯 Batch Claim (${mints.filter(m => BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs).length} Mature)`}
           </button>
 
-          {/* Auto-repeat toggle */}
-          <label className="flex items-center gap-2 cursor-pointer select-none w-fit">
-            <input
-              type="checkbox"
-              checked={autoRepeat}
-              onChange={e => setAutoRepeat(e.target.checked)}
-              disabled={claimingAll || claiming !== null}
-              className="w-4 h-4 accent-[#00FFAA] cursor-pointer"
-            />
-            <span className="text-xs text-[#888] uppercase tracking-widest">
-              Auto-repeat{autoRepeat ? ' — will stop on denied tx' : ''}
-            </span>
-          </label>
-
           {claimAllResults && (
-            <div className="mt-1 space-y-2">
+            <div className="mt-3 space-y-2">
               {claimAllResults.sigs.map((sig, i) => (
                 <div key={sig} className="bg-[#001a0d] border border-[#00FFAA33] rounded p-3 text-xs space-y-1">
                   <div className="text-[#00FFAA] font-bold">✓ Batch {i + 1} claimed</div>
