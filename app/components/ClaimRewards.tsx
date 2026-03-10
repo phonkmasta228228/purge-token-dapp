@@ -340,13 +340,13 @@ export const ClaimRewards: FC = () => {
   };
 
   // claimOneBatch claims up to `limit` mature mints in one button press.
-  // Returns { sigs, failed, denied } where denied=true means user rejected a tx.
-  const claimOneBatch = useCallback(async (limit: number): Promise<{ sigs: string[]; failed: number[]; denied: boolean }> => {
-    if (!publicKey || !sendTransaction) return { sigs: [], failed: [], denied: false };
+  // Returns { sigs, failed, denied, claimedSlotIds } where denied=true means user rejected a tx.
+  const claimOneBatch = useCallback(async (limit: number): Promise<{ sigs: string[]; failed: number[]; denied: boolean; claimedSlotIds: number[] }> => {
+    if (!publicKey || !sendTransaction) return { sigs: [], failed: [], denied: false, claimedSlotIds: [] };
     const candidateMints = mints
       .filter(m => BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs)
       .slice(0, limit);
-    if (candidateMints.length === 0) return { sigs: [], failed: [], denied: false };
+    if (candidateMints.length === 0) return { sigs: [], failed: [], denied: false, claimedSlotIds: [] };
 
     const conn = new Connection(X1_RPC, 'confirmed');
     const { getAssociatedTokenAddress, createAssociatedTokenAccountInstruction, TOKEN_PROGRAM_ID } = await import('@solana/spl-token');
@@ -370,7 +370,7 @@ export const ClaimRewards: FC = () => {
       .filter((r): r is PromiseFulfilledResult<UserMintData | null> => r.status === 'fulfilled' && r.value !== null)
       .map(r => r.value as UserMintData);
 
-    if (matureMints.length === 0) return { sigs: [], failed: [], denied: false };
+    if (matureMints.length === 0) return { sigs: [], failed: [], denied: false, claimedSlotIds: [] };
 
     const ataInfo = await conn.getAccountInfo(userTokenAccount);
     const needsAta = !ataInfo;
@@ -383,6 +383,7 @@ export const ClaimRewards: FC = () => {
 
     const sigs: string[] = [];
     const failed: number[] = [];
+    const claimedSlotIds: number[] = [];
 
     for (let bi = 0; bi < batches.length; bi++) {
       const batch = batches[bi];
@@ -424,10 +425,11 @@ export const ClaimRewards: FC = () => {
         const sig = await sendTransaction(tx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
         await conn.confirmTransaction(sig, 'confirmed');
         sigs.push(sig);
+        batch.forEach(m => claimedSlotIds.push(m.slotId));
       } catch (batchErr) {
         // If user denied the wallet popup, stop immediately
         if (isUserDenial(batchErr)) {
-          return { sigs, failed, denied: true };
+          return { sigs, failed, denied: true, claimedSlotIds };
         }
         // Batch failed for on-chain reason — retry each slot individually
         for (const mint of batch) {
@@ -458,9 +460,10 @@ export const ClaimRewards: FC = () => {
             const soloSig = await sendTransaction(soloTx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
             await conn.confirmTransaction(soloSig, 'confirmed');
             sigs.push(soloSig);
+            claimedSlotIds.push(mint.slotId);
           } catch (soloErr) {
             if (isUserDenial(soloErr)) {
-              return { sigs, failed, denied: true };
+              return { sigs, failed, denied: true, claimedSlotIds };
             }
             failed.push(mint.slotId);
           }
@@ -468,7 +471,7 @@ export const ClaimRewards: FC = () => {
       }
     }
 
-    return { sigs, failed, denied: false };
+    return { sigs, failed, denied: false, claimedSlotIds };
   }, [publicKey, sendTransaction, mints]);
 
   const handleClaimAll = useCallback(async () => {
@@ -479,25 +482,37 @@ export const ClaimRewards: FC = () => {
     setClaimAllResults(null);
 
     try {
-      let allSigs: string[] = [];
-      let allFailed: number[] = [];
+      const { sigs, failed, denied, claimedSlotIds } = await claimOneBatch(SINGLE_BATCH_LIMIT);
 
-      const { sigs, failed, denied } = await claimOneBatch(SINGLE_BATCH_LIMIT);
-      allSigs = sigs;
-      allFailed = failed;
+      // Optimistically remove claimed slots from local state — no chain reload needed
+      // between auto-repeat batches. Full reload happens only when we're truly done.
+      if (claimedSlotIds.length > 0) {
+        const claimedSet = new Set(claimedSlotIds);
+        setMints(prev => prev.filter(m => !claimedSet.has(m.slotId)));
+        setCounter(prev => prev ? { ...prev, activeCount: Math.max(0, prev.activeCount - claimedSlotIds.length) } : prev);
+      }
 
-      // If user denied, kill auto-repeat immediately — set the ref synchronously
-      // so any already-scheduled setTimeout callback sees it before state update lands
       if (denied) {
+        // Kill auto-repeat synchronously
         autoRepeatRef.current = false;
         setAutoRepeat(false);
-        setClaimAllResults({ sigs: allSigs, failed: allFailed });
+        setClaimAllResults({ sigs, failed });
+        // Do a full reload now that we're stopped
         await loadData(publicKey);
         return;
       }
 
-      await loadData(publicKey);
-      setClaimAllResults({ sigs: allSigs, failed: allFailed });
+      setClaimAllResults({ sigs, failed });
+
+      // Check if there are still mature mints left (using updated local state)
+      // If not, do a final reload to sync chain state
+      const stillMature = mints.filter(m =>
+        !new Set(claimedSlotIds).has(m.slotId) &&
+        BigInt(Math.floor(Date.now() / 1000)) >= m.maturityTs
+      );
+      if (stillMature.length === 0 || !autoRepeatRef.current) {
+        await loadData(publicKey);
+      }
     } finally {
       setClaimingAll(false);
     }
