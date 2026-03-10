@@ -73,7 +73,7 @@ function parseUserMint(data: Buffer, slotId: number): UserMintData {
   const cRank = data.readBigUInt64LE(offset); offset += 8;
   const amp = data.readBigUInt64LE(offset); offset += 8;
   const reward = data.readBigUInt64LE(offset); offset += 8;
-  const claimed = data[offset] === 1;
+  const claimed = data[offset] !== 0;
   const active = !claimed;
   return { slotId: parsedSlotId, owner, cRank, amp, reward, termDays, maturityTs, active };
 }
