@@ -146,18 +146,20 @@ export const Dashboard: FC = () => {
         } catch {
           // non-fatal — just leave supply as null
         }
-
-        // Fetch total unclaimed PURGE (pending rewards across all active mints)
-        try {
-          const unclaimed = await fetchTotalUnclaimedPurge(conn);
-          setUnclaimedPurge(unclaimed);
-        } catch {
-          // non-fatal
-        }
       } catch {
         setError('Could not load global state from chain.');
       } finally {
         setLoadingGlobal(false);
+      }
+
+      // Fetch total unclaimed PURGE separately — this is slow (196k accounts)
+      // so we don't block the main stats from displaying
+      try {
+        const conn2 = new Connection(X1_RPC, 'confirmed');
+        const unclaimed = await fetchTotalUnclaimedPurge(conn2);
+        setUnclaimedPurge(unclaimed);
+      } catch {
+        // non-fatal
       }
     };
     load();
