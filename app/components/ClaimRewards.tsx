@@ -3,7 +3,7 @@
 import { FC, useState, useEffect, useCallback } from 'react';
 import { useWallet } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { PublicKey, Connection, Transaction, TransactionInstruction, SystemProgram } from '@solana/web3.js';
+import { PublicKey, Connection, Transaction, TransactionInstruction, SystemProgram, ComputeBudgetProgram } from '@solana/web3.js';
 
 const PROGRAM_ID = new PublicKey('6K6md8GFmT8fncNbWqHSJrduYfG6HgnFCp34jdouGVSM');
 const PURGE_MINT = new PublicKey('6To4f6r9X3WFsLwWLFdj7ju8BNquzZwupVHUc8oS5pgP');
@@ -372,7 +372,7 @@ export const ClaimRewards: FC = () => {
       const ataInfo = await conn.getAccountInfo(userTokenAccount);
       const needsAta = !ataInfo;
 
-      const BATCH_SIZE = 16;
+      const BATCH_SIZE = 5; // Reduced from 16 — TX size limit (1232 bytes) with 10 accounts per ix
       const batches: UserMintData[][] = [];
       for (let i = 0; i < matureMints.length; i += BATCH_SIZE) {
         batches.push(matureMints.slice(i, i + BATCH_SIZE));
@@ -388,6 +388,11 @@ export const ClaimRewards: FC = () => {
           const tx = new Transaction();
           tx.recentBlockhash = blockhash;
           tx.feePayer = publicKey;
+
+          // Compute budget: 200k CU per claim + 50k base
+          const computeUnits = 50000 + (batch.length * 200000);
+          tx.add(ComputeBudgetProgram.setComputeUnitLimit({ units: computeUnits }));
+          tx.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 5000 }));
 
           // Only add ATA ix on first batch
           if (bi === 0 && needsAta) {
