@@ -238,8 +238,9 @@ export const ClaimRank: FC = () => {
         } catch (e: unknown) {
           const msg = (e instanceof Error ? e.message : String(e));
           const msgLower = msg.toLowerCase();
+          console.log('[ClaimRank] Transaction error:', msg);
           // If user rejected, abort the entire batch immediately — no more prompts
-          if (msgLower.includes('user rejected') || msgLower.includes('rejected') || msgLower.includes('transaction cancelled') || msgLower.includes('cancelled') || msgLower.includes('closed') || msgLower.includes('timeout')) {
+          if (msgLower.includes('user rejected') || msgLower.includes('rejected') || msgLower.includes('transaction cancelled') || msgLower.includes('cancelled') || msgLower.includes('closed') || msgLower.includes('timeout') || msgLower.includes('user denied') || msgLower.includes('denied') || msgLower.includes('abort') || msgLower.includes('dismiss') || msgLower.includes('popup')) {
             setBatchResults([...allResults]);
             setProgress({ sent: allResults.length, succeeded: allResults.filter(r => r.success).length, failed: allResults.filter(r => !r.success).length });
             return;
