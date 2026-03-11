@@ -433,8 +433,14 @@ export const ClaimRewards: FC = () => {
           const sig = await sendTransaction(tx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
           await conn.confirmTransaction(sig, 'confirmed');
           sigs.push(sig);
-        } catch {
-          // Batch failed — retry each slot individually so one bad slot can't block the rest
+        } catch (batchErr: unknown) {
+          // If user rejected the transaction, abort the entire batch claim immediately
+          const errMsg = (batchErr instanceof Error ? batchErr.message : String(batchErr)).toLowerCase();
+          if (errMsg.includes('user rejected') || errMsg.includes('rejected the request') || errMsg.includes('transaction cancelled') || errMsg.includes('cancelled')) {
+            setClaimAllResults({ sigs, failed });
+            return;
+          }
+          // Batch failed for other reason — retry each slot individually so one bad slot can't block the rest
           for (const mint of batch) {
             try {
               const { blockhash: bh } = await conn.getLatestBlockhash('confirmed');
@@ -463,7 +469,12 @@ export const ClaimRewards: FC = () => {
               const soloSig = await sendTransaction(soloTx, conn, { skipPreflight: false, preflightCommitment: 'confirmed' });
               await conn.confirmTransaction(soloSig, 'confirmed');
               sigs.push(soloSig);
-            } catch {
+            } catch (soloErr: unknown) {
+              const soloErrMsg = (soloErr instanceof Error ? soloErr.message : String(soloErr)).toLowerCase();
+              if (soloErrMsg.includes('user rejected') || soloErrMsg.includes('rejected the request') || soloErrMsg.includes('transaction cancelled') || soloErrMsg.includes('cancelled')) {
+                setClaimAllResults({ sigs, failed });
+                return;
+              }
               failed.push(mint.slotId);
             }
           }
