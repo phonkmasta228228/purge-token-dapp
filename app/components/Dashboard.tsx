@@ -311,7 +311,7 @@ export const Dashboard: FC = () => {
             { label: 'Genesis AMP', value: '69' },
             { label: 'AMP Decay', value: '1 per day' },
             { label: 'Min AMP', value: '0' },
-            { label: 'Decimals', value: '18' },
+            { label: 'Decimals', value: '2' },
           ].map(({ label, value }) => (
             <div key={label} className="px-5 py-3 flex items-center justify-between">
               <span className="text-xs text-[#555] uppercase tracking-widest">{label}</span>
